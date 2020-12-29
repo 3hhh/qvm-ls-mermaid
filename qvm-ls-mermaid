@@ -1,0 +1,282 @@
+#!/bin/bash
+#
+#See usage().
+#
+#Copyright (C) 2020  David Hobach  GPLv3
+#version: 0.7
+#
+#This program is free software: you can redistribute it and/or modify
+#it under the terms of the GNU General Public License as published by
+#the Free Software Foundation, either version 3 of the License, or
+#(at your option) any later version.
+#
+#This program is distributed in the hope that it will be useful,
+#but WITHOUT ANY WARRANTY; without even the implied warranty of
+#MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#GNU General Public License for more details.
+#
+#You should have received a copy of the GNU General Public License
+#along with this program. If not, see <https://www.gnu.org/licenses/>.
+#
+
+#init blib
+source blib
+b_checkVersion 1 3 || { >&2 echo "This script depends on blib (https://github.com/3hhh/blib) version 1.3 or higher. Please install a supported version." ; exit 1 ; }
+eval "$B_SCRIPT"
+b_import "args"
+b_import "os/qubes4/dom0"
+
+#distinguish the B_E exit code from the "normal" error
+B_RC=6
+
+#input qvm-ls call
+QVM_LS="qvm-ls --raw-data -O name,CLASS,label,netvm,provides_network,template,template_for_dispvms,virt_mode"
+
+#full path to the default output directory
+OUT_DEFAULT="/tmp/qvm-ls-mermaid"
+
+#directory to be transferred to the target VM
+VM_DIR="$B_SCRIPT_DIR/mermaid"
+
+#name of the main output file
+MERMAID_OUT="qvm-ls-mermaid.js"
+
+function usage {
+echo "
+Usage: $B_SCRIPT_NAME [options] [out vm] [out dir]
+
+Generate a mermaid-js flow chart from the Qubes OS network topology,
+store and display it inside a VM.
+
+mermaid-js: https://mermaid-js.github.io/
+
+[out vm]:
+  Name of the VM where the chart is meant to be stored. If this is
+  set to dom0, the output is printed to the dom0 stdout.
+  Default: Fresh disposable VM.
+
+[out dir]:
+  Full path to the directory inside [out vm] where to store the
+  chart. If this directory already contains existing files, only
+  $MERMAID_OUT is written. Otherwise the directory is filled
+  with files that are necessary to view the chart inside a browser.
+  Default: $OUT_DEFAULT
+
+[options]:
+  -r
+    Read the qvm-ls output from stdin rather than generating it
+    internally. This is useful for pre-filtering with e.g. grep or
+    sed.
+    Required format:
+    $QVM_LS
+
+  --orient [TB|BT|RL|LR]
+    Orientation of the resulting graph. Default: TB (top to bottom)
+
+  -n
+    Filter out all VMs without networking from the result.
+
+  -t
+    Include template information in the output.
+
+  -v
+    Include the virtualization mode in the output.
+
+  -D
+    Include all qvm-prefs details in the diagram by clicking on
+    a VM node.
+    This mode may generate syntax that is not compatible with
+    standard mermaid-js.
+
+  -w
+    Use arrows without direction.
+
+  -f
+    Force re-writing the [out dir] and ignore existing files.
+
+  --browser [browser]
+    Use the given browser to display the chart (default: xdg-open).
+"
+exit 1
+}
+
+#getOrientation
+#Retrieve the output orientation, if and only if the user specified a valid one.
+#returns: Output orientation.
+#@B_E
+function getOrientation {
+local ret=
+ret="$(b_args_getOption "--orient" "TB")"
+
+if [[ "$ret" == "TB" ]] || [[ "$ret" == "BT" ]] || [[ "$ret" == "RL" ]] || [[ "$ret" == "LR" ]] ; then
+  echo "$ret"
+else
+  B_ERR="Invalid orientation: $ret"
+  B_E
+fi
+}
+
+#getMermaidId [name]
+#Generate a mermaid ID from the given VM name.
+#returns: An ID that should be accepted by mermaid-js.
+function getMermaidId {
+local name="$1"
+
+#mermaid-js doesn't like the word "default" in any ID --> replace it
+echo "${name/default/Default}"
+}
+
+#getMermaidOut
+#Get the mermaid output. Input is read from stdin.
+#returns: The mermaid-js output.
+#@B_E
+function getMermaidOut {
+#print header
+local orient=
+orient="$(getOrientation)" || { B_ERR="Invalid orientation specified." ; B_E }
+echo "graph $orient"
+echo ""
+
+local filterNoNet=1
+b_args_getOption "-n" > /dev/null && filterNoNet=0
+
+local includeTemplate=1
+b_args_getOption "-t" > /dev/null && includeTemplate=0
+
+local includeVirt=1
+b_args_getOption "-v" > /dev/null && includeVirt=0
+
+local arrow="-->"
+b_args_getOption "-w" > /dev/null && arrow="---"
+
+local includeDetails=1
+b_args_getOption "-D" > /dev/null && includeDetails=0
+
+echo "%% nodes %%"
+local links=""
+local line name class label netvm providesNetwork template dispTemplate virtMode id details
+while IFS= read -r line ; do
+  [ -z "$line" ] && continue
+  IFS='|' read -r name class label netvm providesNetwork template dispTemplate virtMode <<< "$line"
+  [[ "$name" == "disp"* ]] && continue #always ignore disposable VM instances
+  [ $filterNoNet -eq 0 ] && [[ "$netvm" == "-" ]] && [ "$providesNetwork" != "True" ] && continue
+
+  #define node
+  id="$(getMermaidId "$name")"
+  echo ""
+  echo "$id($name)"
+  echo "class $id class_$class;"
+  echo "class $id label_$label;"
+  [[ "$dispTemplate" == "True" ]] && echo "class $id dispTemplate;"
+  [ $includeVirt -eq 0 ] && echo "class $id virt_mode_$virtMode;"
+  [ $includeTemplate -eq 0 ] && [[ "$template" != "-" ]] && echo "class $id template_$template;"
+  echo "click $id show_details \"details\""
+  if [ $includeDetails -eq 0 ] ; then
+    if details="$(qvm-prefs "$name")" ; then
+      echo "<div id=\"details_$id\">"
+      echo "$details"
+      echo "</div>"
+    fi
+  fi
+
+  #define links
+  [[ "$netvm" != "-" ]] && links="$links"$'\n'"$id $arrow $(getMermaidId "$netvm")"
+done
+
+echo ""
+echo "%% links %%"
+echo "$links"
+}
+
+#vm_moveAndDisplay [src dir] [target dir] [mermaid file] [browser] [force]
+#Display the graph. This function is run inside the VM only.
+#[src dir]: From where to move the data.
+#[target dir]: Where to find the data.
+#[mermaid file]: Name of the mermaid file.
+#[browser]: The browser to use.
+#[force]: If set to 0, forcefully overwrite existing data (default: 1).
+#returns: A nonzero-exit code on issues.
+#@B_E
+function vm_moveAndDisplay {
+local srcDir="$1"
+local targetDir="$2"
+local mfile="$3"
+local browser="$4"
+local force="${5:-1}"
+
+set -e -o pipefail
+
+mkdir -p "$targetDir"
+
+#check whether the target dir already has data
+local cnt=
+[ $force -eq 0 ] && cnt=1 || cnt="$(find "$targetDir" | wc -l)"
+if [ $cnt -eq 1 ] ; then
+  #no data --> copy all input
+  mv "$srcDir"/* "$targetDir"
+else
+  #has data --> copy mermaid file only
+  mv "$srcDir/$mfile" "$targetDir"
+fi
+
+#cleanup
+rm -rf "$srcDir"
+
+#display
+cd "$targetDir"
+./run "$browser"
+}
+
+function main {
+b_deps "qvm-ls" "cat" "qvm-prefs" "qvm-copy-to-vm"
+b_dom0_setVMDeps "find"$'\n'"wc"$'\n'"mv"$'\n'"mkdir"
+
+b_args_init 1 "-r" 0 "--orient" 1 "-n" 0 "-t" 0 "-v" 0 "-D" 0 "-w" 0 "-f" 0 "--browser" 1
+b_args_parse "$@"
+if [ $(b_args_getCount) -gt 2 ] || [[ "$(b_args_get 0)" == "help" ]] ; then
+  usage
+fi
+
+local outVM="$(b_args_get 0)"
+local outDir="$(b_args_get 1 "$OUT_DEFAULT")"
+
+local cmd=
+b_args_getOption "-r" > /dev/null && cmd="cat -" || cmd="$QVM_LS"
+
+local mermaid=
+mermaid="$(set -o pipefail ; eval "$cmd" | getMermaidOut)"
+[ $? -ne 0 ] && B_ERR="Failed to generate the mermaid output." && B_E
+
+#sepcial case: print to dom0 stdout
+if [[ "$outVM" == "dom0" ]] ; then
+  echo "$mermaid"
+  return 0
+fi
+
+local browser="$(b_args_getOption "--browser")"
+local force=1
+b_args_getOption "-f" > /dev/null && force=0
+
+b_info "Generated the mermaid output. Ensuring that the ${outVM:-"disposable"} target VM is running..."
+if [ -z "$outVM" ] ; then
+  outVM="$(b_dom0_startDispVM)" || { B_ERR="Failed to start a disposable VM." ; B_E }
+else
+  b_dom0_ensureRunning "$outVM"
+fi
+
+b_info "Transferring the data to the $outVM VM..."
+local ofile="$VM_DIR/$MERMAID_OUT"
+echo "$mermaid" > "$ofile" || { B_ERR="Failed to write to $ofile." ; B_E }
+qvm-copy-to-vm "$outVM" "$VM_DIR" || { B_ERR="Failed to copy the data." ; B_E }
+
+b_info "Moving and displaying the graph inside the $outVM VM..."
+local vmUser=
+vmUser="$(qvm-prefs "$outVM" "default_user")" || { B_ERR="Failed to identify the default_user for the $outVM VM." ; B_E }
+local srcDir="/home/$vmUser/QubesIncoming/dom0/${VM_DIR##*/}"
+b_dom0_execFuncIn "$outVM" "$vmUser" "vm_moveAndDisplay" - - "$srcDir" "$outDir" "$MERMAID_OUT" "$browser" "$force" > /dev/null || { B_ERR="Failed to display the graph inside the $outVM VM." ; B_E }
+
+echo ""
+b_info "All done."
+}
+
+main "$@"

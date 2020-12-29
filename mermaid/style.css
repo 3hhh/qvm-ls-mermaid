@@ -1,0 +1,67 @@
+.mermaid {
+  /* static width & height to make browser zoom work */
+  width: 4000px;
+  height: 4000px;
+}
+
+.node > rect {
+  stroke: DarkGray !important;
+  stroke-width: 1px !important;
+}
+
+.label_red > rect {
+  fill: lightcoral !important;
+}
+
+.label_orange > rect {
+  fill: orange !important;
+}
+
+.label_yellow > rect {
+  fill: yellow !important;
+}
+
+.label_green > rect {
+  fill: green !important;
+}
+
+.label_gray > rect {
+  fill: gray !important;
+}
+
+.label_blue > rect {
+  fill: blue !important;
+}
+
+.label_purple > rect {
+  fill: purple !important;
+}
+
+.label_black > rect {
+  fill: black !important;
+}
+
+/* make some labels white for better visibility */
+.label_black > .label,
+.label_green > .label,
+.label_blue > .label,
+.label_purple > .label {
+  color: white !important;
+}
+
+/* highlight disposable VMs */
+.class_DispVM > rect {
+  stroke: red !important;
+  stroke-width: 2px !important;
+}
+
+/* highlight template VMs and templates for disposable VMs */
+.class_TemplateVM > rect,
+.dispTemplate > rect {
+  stroke: MediumBlue !important;
+  stroke-width: 2px !important;
+}
+
+#details {
+  display: none;
+}

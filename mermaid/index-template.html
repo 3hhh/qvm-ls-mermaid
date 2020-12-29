@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <link rel="stylesheet" type="text/css" href="./style.css">
+    <title>qvm-ls-mermaid</title>
+    <script>
+      function alertOnIE() {
+        if (navigator.userAgent.indexOf('MSIE') !== -1 || navigator.appVersion.indexOf('Trident/') > -1) {
+        /* IE 6 --> 11 */
+        alert('IE 11 or older are not supported. Please use a more recent browser.');
+        }
+      }
+      window.onload = alertOnIE
+    </script>
+  </head>
+  <body>
+    <div id="main">
+      <!-- the below line will be dynamically replaced by the run script -->
+      <div class="mermaid"></div>
+    </div>
+    <script src="./mermaid_8.8.4.min.js"></script>
+    <script>
+      var show_details = function(id) {
+        var e = document.getElementById('details_' + id);
+        if (e) { alert(e.innerHTML); }
+      }
+
+      var config = {
+      startOnLoad:true,
+      flowchart: {
+        useMaxWidth:true,
+        htmlLabels:true,
+        //curve:'cardinal',
+        },
+      securityLevel:'loose',
+      };
+      mermaid.initialize(config);
+    </script>
+    <noscript><p>Javascript required!</p></noscript>
+  </body>
+</html>

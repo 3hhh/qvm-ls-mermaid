@@ -1,0 +1,52 @@
+#!/bin/bash
+#run [browser]
+set -e -o pipefail
+
+SCRIPT_DIR="$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")"
+
+TEMPLATE="$SCRIPT_DIR/index-template.html"
+MERMAID="$SCRIPT_DIR/qvm-ls-mermaid.js"
+TARGET="$SCRIPT_DIR/index.html"
+
+function error {
+  local msg="$1"
+  >&2 echo "ERROR: $msg"
+  exit 1
+}
+
+#obtain mermaid code & additional details (-D)
+inDiv=1
+mermaid=""
+details=""
+while IFS= read -r line ; do
+  [[ "$line" == "<div"* ]] && inDiv=0
+
+  if [ $inDiv -eq 0 ] ; then
+    details="$details"$'\n'"$line"
+    [[ "$line" == "</div>" ]] && inDiv=1
+  else
+    mermaid="$mermaid"$'\n'"$line"
+  fi
+done < "$MERMAID"
+
+#generate $TARGET mermaid-js code
+#NOTE: dynamic loading via XHR or iframe doesn't work due to cross-origin restrictions
+found=1
+while IFS= read -r line ; do
+  if [[ "$line" == *"<div class=\"mermaid\"></div>" ]] ; then
+    echo "<div class=\"mermaid\">"
+    echo "$mermaid"
+    echo "</div>"
+    echo "<div id=\"details\">"
+    echo "$details"
+    echo "</div>"
+    found=0
+  else
+    echo "$line"
+  fi
+done < "$TEMPLATE" > "$TARGET"
+
+[ $found -eq 0 ] || error "Didn't find the mermaid div inside $TEMPLATE."
+
+browser="${1:-"xdg-open"}"
+$browser index.html
