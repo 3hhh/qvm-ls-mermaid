@@ -29,8 +29,9 @@ b_import "os/qubes4/dom0"
 #distinguish the B_E exit code from the "normal" error
 B_RC=6
 
-#input qvm-ls call
+#input qvm-ls & RPC call
 QVM_LS="qvm-ls --raw-data -O name,CLASS,label,netvm,provides_network,template,template_for_dispvms,virt_mode"
+RPC_LS="qrexec-policy-graph"
 
 #full path to the default output directory
 OUT_DEFAULT="/tmp/qvm-ls-mermaid"
@@ -68,10 +69,15 @@ mermaid-js: https://mermaid-js.github.io/
     internally. This is useful for pre-filtering with e.g. grep or
     sed.
     Required format:
-    $QVM_LS
+    ( $QVM_LS && $RPC_LS )
 
   --orient [TB|BT|RL|LR]
     Orientation of the resulting graph. Default: TB (top to bottom)
+
+  -R
+    Include RPC input data from qrexec-policy-graph. It is heavily
+    recommended to use -r and manually pre-filter to only the data
+    you need as the graph will be huge otherwise.
 
   -n
     Filter out all VMs without networking from the result.
@@ -123,7 +129,12 @@ function getMermaidId {
 local name="$1"
 
 #mermaid-js doesn't like the word "default" in any ID --> replace it
-echo "${name/default/Default}"
+name="${name/default/Default}"
+
+#mermaid-js doesn't like the @ sign --> remove it
+name="${name/@/}"
+
+echo "$name"
 }
 
 #getMermaidOut
@@ -140,49 +151,94 @@ echo ""
 local filterNoNet=1
 b_args_getOption "-n" > /dev/null && filterNoNet=0
 
+local includeRpc=1
+b_args_getOption "-R" > /dev/null && includeRpc=0
+
 local includeTemplate=1
 b_args_getOption "-t" > /dev/null && includeTemplate=0
 
 local includeVirt=1
 b_args_getOption "-v" > /dev/null && includeVirt=0
 
-local arrow="-->"
-b_args_getOption "-w" > /dev/null && arrow="---"
+local thinArrow="-->"
+local thickArrow="==>"
+b_args_getOption "-w" > /dev/null && thinArrow="---" && thickArrow="==="
 
 local includeDetails=1
 b_args_getOption "-D" > /dev/null && includeDetails=0
 
-echo "%% nodes %%"
+declare -A nodeDone=()
+local nodes=""
 local links=""
 local line name class label netvm providesNetwork template dispTemplate virtMode id details
+local inRpc=1 #whether or not we're currently parsing qrexec-policy-graph output
 while IFS= read -r line ; do
   [ -z "$line" ] && continue
-  IFS='|' read -r name class label netvm providesNetwork template dispTemplate virtMode <<< "$line"
-  [[ "$name" == "disp"* ]] && continue #always ignore disposable VM instances
-  [ $filterNoNet -eq 0 ] && [[ "$netvm" == "-" ]] && [ "$providesNetwork" != "True" ] && continue
 
-  #define node
-  id="$(getMermaidId "$name")"
-  echo ""
-  echo "$id($name)"
-  echo "class $id class_$class;"
-  echo "class $id label_$label;"
-  [[ "$dispTemplate" == "True" ]] && echo "class $id dispTemplate;"
-  [ $includeVirt -eq 0 ] && echo "class $id virt_mode_$virtMode;"
-  [ $includeTemplate -eq 0 ] && [[ "$template" != "-" ]] && echo "class $id template_$template;"
-  echo "click $id show_details \"details\""
-  if [ $includeDetails -eq 0 ] ; then
-    if details="$(qvm-prefs "$name")" ; then
-      echo "<div id=\"details_$id\">"
-      echo "$details"
-      echo "</div>"
+  #detect the start and end of qrexec-policy-graph output
+  [[ "$line" == "digraph g {" ]] && [ $inRpc -ne 0 ] && inRpc=0 && continue
+  [[ "$line" == "}" ]] && [ $inRpc -eq 0 ] && inRpc=1 && continue
+
+  #parse
+  if [ $inRpc -ne 0 ] ; then
+    #qvm-ls output
+
+    IFS='|' read -r name class label netvm providesNetwork template dispTemplate virtMode <<< "$line"
+    [[ "$name" == "disp"* ]] && continue #always ignore disposable VM instances
+    [ $filterNoNet -eq 0 ] && [[ "$netvm" == "-" ]] && [ "$providesNetwork" != "True" ] && continue
+
+    #define node
+    id="$(getMermaidId "$name")"
+    nodes="$nodes"$'\n'
+    nodes="$nodes"$'\n'"$id($name)"
+    nodeDone["$id"]=0
+    nodes="$nodes"$'\n'"class $id class_$class;"
+    nodes="$nodes"$'\n'"class $id label_$label;"
+    [[ "$dispTemplate" == "True" ]] && nodes="$nodes"$'\n'"class $id dispTemplate;"
+    [ $includeVirt -eq 0 ] && nodes="$nodes"$'\n'"class $id virt_mode_$virtMode;"
+    [ $includeTemplate -eq 0 ] && [[ "$template" != "-" ]] && nodes="$nodes"$'\n'"class $id template_$template;"
+    nodes="$nodes"$'\n'"click $id show_details \"details\""
+    if [ $includeDetails -eq 0 ] ; then
+      if details="$(qvm-prefs "$name")" ; then
+        nodes="$nodes"$'\n'"<div id=\"details_$id\">"$'\n'"$details"$'\n'"</div>"
+      fi
     fi
-  fi
 
-  #define links
-  [[ "$netvm" != "-" ]] && links="$links"$'\n'"$id $arrow $(getMermaidId "$netvm")"
+    #define links
+    [[ "$netvm" != "-" ]] && links="$links"$'\n'"$id $thickArrow $(getMermaidId "$netvm")"
+  else
+    #qrexec-policy-graph output
+    #TOFIX: $filterNoNet has no effect here
+    [ $includeRpc -ne 0 ] && continue
+
+    #line format:
+    #"[source]" -> "[target]" [label="[policy]" color=red];
+    #[source]: always a fully qualified VM name
+    #[target]: may represent a group of VMs, e.g. @dispvm:[template]
+    local re='^[ ]+"([^"]+)" -> "([^"]+)" \[label="([^"]+)" .*$'
+
+    [[ "$line" =~ $re ]] || { B_ERR="Unexpected line during qrexec-policy-graph parsing: $line" ; B_E }
+    local src="${BASH_REMATCH[1]}"
+    [[ "$src" == "disp"* ]] && continue #always ignore disposable VM instances
+    local target="${BASH_REMATCH[2]}"
+    local policy="${BASH_REMATCH[3]}"
+
+    local sid="$(getMermaidId "$src")"
+    local tid="$(getMermaidId "$target")"
+
+    if [[ "$target" == "@"* ]] && [ ! ${nodeDone["$tid"]+exists} ] ; then
+      nodes="$nodes"$'\n'
+      nodes="$nodes"$'\n'"$tid{{$tid}}"
+      nodes="$nodes"$'\n'"class $tid class_Group;"
+      nodeDone["$tid"]=0
+    fi
+
+    links="$links"$'\n'"$sid $thinArrow|$policy|$tid"
+  fi
 done
 
+echo "%% nodes %%"
+echo "$nodes"
 echo ""
 echo "%% links %%"
 echo "$links"
@@ -228,10 +284,10 @@ cd "$targetDir"
 }
 
 function main {
-b_deps "qvm-ls" "cat" "qvm-prefs" "qvm-copy-to-vm"
+b_deps "qvm-ls" "cat" "qvm-prefs" "qvm-copy-to-vm" "qrexec-policy-graph"
 b_dom0_setVMDeps "find"$'\n'"wc"$'\n'"mv"$'\n'"mkdir"
 
-b_args_init 1 "-r" 0 "--orient" 1 "-n" 0 "-t" 0 "-v" 0 "-D" 0 "-w" 0 "-f" 0 "--browser" 1
+b_args_init 1 "-r" 0 "--orient" 1 "-n" 0 "-R" 0 "-t" 0 "-v" 0 "-D" 0 "-w" 0 "-f" 0 "--browser" 1
 b_args_parse "$@"
 if [ $(b_args_getCount) -gt 2 ] || [[ "$(b_args_get 0)" == "help" ]] ; then
   usage
@@ -241,7 +297,11 @@ local outVM="$(b_args_get 0)"
 local outDir="$(b_args_get 1 "$OUT_DEFAULT")"
 
 local cmd=
-b_args_getOption "-r" > /dev/null && cmd="cat -" || cmd="$QVM_LS"
+if b_args_getOption "-r" > /dev/null ; then
+  cmd="cat -"
+else
+  b_args_getOption "-R" > /dev/null && cmd="( $QVM_LS && $RPC_LS )" || cmd="$QVM_LS"
+fi
 
 local mermaid=
 mermaid="$(set -o pipefail ; eval "$cmd" | getMermaidOut)"
