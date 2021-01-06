@@ -1,0 +1,96 @@
+#!/usr/bin/python3
+# -*- encoding: utf8 -*-
+#
+# Prune `qrexec-policy-graph` dot graph output to make it more usable for display (it tends to produce a graph with 10-60k edges).
+#
+# Reads the input graph from stdin and writes the output graph to stdout.
+#
+# Copyright (C) 2021  David Hobach  GPLv3
+# 0.3
+#
+#
+# Relevant doc:
+# - https://github.com/QubesOS/qubes-core-qrexec/blob/master/qrexec/tools/qrexec_policy_graph.py
+# - https://networkx.org/documentation/networkx-1.11/
+
+import networkx as nx
+from networkx.drawing.nx_pydot import read_dot, write_dot
+import sys
+
+#merge_attributes(atts)
+#Merge the given list of attributes to a single attribute dict.
+def merge_attributes(atts):
+    ret = {}
+    for att in atts:
+        for key in att.keys():
+            val = att[key]
+            if key == 'label':
+                if not ret.get(key):
+                    ret[key] = []
+                if isinstance(val, list):
+                    for i in val:
+                        if not i in ret[key]:
+                            ret[key].append(i)
+                else:
+                    if not val in ret[key]:
+                        ret[key].append(val)
+            elif key == 'color':
+                if ret.get(key) != 'red': #red always wins
+                    ret[key] = val
+            else:
+                raise Exception('Unexpected key found: %s' % key)
+    return ret
+
+#merge_nodes(nodes)
+#Merge the given list of nodes.
+def merge_nodes(nodes):
+    ret = sorted(set(nodes))
+    return ','.join(ret)
+
+# prune the given graph G by merging all nodes & edges that share a common identifier returned by `id_func(node1, node2, edge_attrs)`
+# id_func must return a hashable object
+def prune(G, id_func):
+    O = nx.MultiDiGraph()
+    id2pre = {} #ID --> { u: u, v: v, a: a }
+
+    for u,v,a in G.edges(data=True):
+        id = id_func(u, v, a)
+
+        #init, if necessary
+        if not id2pre.get(id):
+            id2pre[id] = {}
+        id2pre[id]['u'] = id2pre[id].get('u',[])
+        id2pre[id]['v'] = id2pre[id].get('v',[])
+        id2pre[id]['a'] = id2pre[id].get('a',[])
+
+        #append
+        id2pre[id]['u'].append(u)
+        id2pre[id]['v'].append(v)
+        id2pre[id]['a'].append(a)
+
+    for id in id2pre:
+        group_u = merge_nodes(id2pre[id]['u'])
+        group_v = merge_nodes(id2pre[id]['v'])
+        atts = merge_attributes(id2pre[id]['a'])
+        O.add_edge(group_u, group_v, attr_dict=atts)
+
+    return O
+
+def main(args=None, app=None):
+    G = read_dot(sys.stdin)
+
+    #TOFIX: attribute order shouldn't matter --> better id_func functions needed
+
+    #prune: if more than one source shares common targets and attributes, merge them to a group
+    G = prune(G, lambda u,v,a: str(v) + str(a))
+
+    #prune: if more than one target shares common sources and attributes, merge them to a group
+    G = prune(G, lambda u,v,a: str(u) + str(a))
+
+    #prune: if more than one attribute shares common sources and targets, merge them to a group
+    G = prune(G, lambda u,v,a: str(u) + str(v))
+
+    write_dot(G, sys.stdout)
+
+if __name__ == '__main__':
+    sys.exit(main())

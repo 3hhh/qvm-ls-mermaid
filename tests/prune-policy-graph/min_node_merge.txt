@@ -1,0 +1,9 @@
+digraph g {
+  "centos-7" -> "dom0" [label="qubes.GetDate" color=red];
+  "fedora-25" -> "dom0" [label="qubes.GetDate" color=red];
+  "sys-dns" -> "dom0" [label="qubes.GetDate" color=red];
+  "sys-dns" -> "someother" [label="qubes.GetSecret" color=red];
+  "sys-dns" -> "more" [label="qubes.GetSecret" color=red];
+  "case3" -> "diff" [label="qubes.SuperSecret1" color=red];
+  "case3" -> "diff" [label="qubes.SomeAlgo2" color=red];
+}
