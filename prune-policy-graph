@@ -16,6 +16,7 @@
 import networkx as nx
 from networkx.drawing.nx_pydot import read_dot, write_dot
 import sys
+import re
 
 #merge_attributes(atts)
 #Merge the given list of attributes to a single attribute dict.
@@ -80,6 +81,13 @@ def main(args=None, app=None):
     G = read_dot(sys.stdin)
 
     #TOFIX: attribute order shouldn't matter --> better id_func functions needed
+
+    #remove disp* nodes
+    to_remove = []
+    for n in G:
+        if re.search("^disp[0-9]+$", str(n)):
+            to_remove.append(n)
+    G.remove_nodes_from(to_remove)
 
     #prune: if more than one source shares common targets and attributes, merge them to a group
     G = prune(G, lambda u,v,a: str(v) + str(a))

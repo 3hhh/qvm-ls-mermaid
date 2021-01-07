@@ -29,9 +29,13 @@ b_import "os/qubes4/dom0"
 #distinguish the B_E exit code from the "normal" error
 B_RC=6
 
+#path to the prune-policy-graph script
+PRUNE_SCRIPT="$B_SCRIPT_DIR/prune-policy-graph"
+
 #input qvm-ls & RPC call
 QVM_LS="qvm-ls --raw-data -O name,CLASS,label,netvm,provides_network,template,template_for_dispvms,virt_mode"
-RPC_LS="qrexec-policy-graph"
+printf -v RPC_LS 'qrexec-policy-graph --include-ask | %q' "$PRUNE_SCRIPT"
+IN_CALL="( $QVM_LS && $RPC_LS )"
 
 #full path to the default output directory
 OUT_DEFAULT="/tmp/qvm-ls-mermaid"
@@ -41,6 +45,10 @@ VM_DIR="$B_SCRIPT_DIR/mermaid"
 
 #name of the main output file
 MERMAID_OUT="qvm-ls-mermaid.js"
+
+#global variables for getGroupId()
+declare -gA ID_GROUPS=() #group --> ID
+declare -gA ID_LAST=() #prefix --> last used counter
 
 function usage {
 echo "
@@ -69,15 +77,15 @@ mermaid-js: https://mermaid-js.github.io/
     internally. This is useful for pre-filtering with e.g. grep or
     sed.
     Required format:
-    ( $QVM_LS && $RPC_LS )
+    $IN_CALL
 
   --orient [TB|BT|RL|LR]
     Orientation of the resulting graph. Default: TB (top to bottom)
 
   -R
-    Include RPC input data from qrexec-policy-graph. It is heavily
-    recommended to use -r and manually pre-filter to only the data
-    you need as the graph will be huge otherwise.
+    Include RPC policy data from qrexec-policy-graph.
+    Generating a policy graph suitable for viewing may take several
+    minutes.
 
   -n
     Filter out all VMs without networking from the result.
@@ -129,10 +137,13 @@ function getMermaidId {
 local name="$1"
 
 #mermaid-js doesn't like the word "default" in any ID --> replace it
-name="${name/default/Default}"
+name="${name//default/Default}"
 
 #mermaid-js doesn't like the @ sign --> remove it
-name="${name/@/}"
+name="${name//@/}"
+
+#mermaid-js doesn't like spaces --> replace them with underscores
+name="${name// /_}"
 
 echo "$name"
 }
@@ -176,7 +187,7 @@ while IFS= read -r line ; do
   [ -z "$line" ] && continue
 
   #detect the start and end of qrexec-policy-graph output
-  [[ "$line" == "digraph g {" ]] && [ $inRpc -ne 0 ] && inRpc=0 && continue
+  [[ "$line" == "digraph "* ]] && [ $inRpc -ne 0 ] && inRpc=0 && continue
   [[ "$line" == "}" ]] && [ $inRpc -eq 0 ] && inRpc=1 && continue
 
   #parse
@@ -211,29 +222,57 @@ while IFS= read -r line ; do
     #TOFIX: $filterNoNet has no effect here
     [ $includeRpc -ne 0 ] && continue
 
+    #skip non-edge lines (prune-policy-graph adds node lines)
+    [[ "$line" != *" -> "* ]] && continue
+
+    #special case: some nodes still need to be created; all others are assumed to exist from qvm-ls
+    #maybe TODO: support the policy graph without qvm-ls input
+    if [[ "$target" == "@"* ]] && [ ! ${nodeDone["$tid"]+exists} ] ; then
+      nodes="$nodes"$'\n'
+      nodes="$nodes"$'\n'"$tid{{$tid}}"
+      nodes="$nodes"$'\n'"class $tid class_Special;"
+      nodeDone["$tid"]=0
+    fi
+
     #line format:
     #"[source]" -> "[target]" [label="[policy]" color=red];
-    #[source]: always a fully qualified VM name
-    #[target]: may represent a group of VMs, e.g. @dispvm:[template]
-    local re='^[ ]+"([^"]+)" -> "([^"]+)" \[label="([^"]+)" .*$'
+    #[source]: a fully qualified VM name _or_ a comma-separated list of VM names
+    #[target]: may represent a group of VMs, e.g. @dispvm:[template] and/or contain a comma-separated list of such names
+    #[policy]: name of a single policy _or_ list of escaped comma-separated policies, e.g. \"qubes.SyncAppMenus\"', '\"qubes.ReceiveUpdates\"', ...
+    local re='^[ ]*"?([^ "]+)"? -> "?([^ "]+)"? .*label="\[([^]]+)\]".*$'
 
     [[ "$line" =~ $re ]] || { B_ERR="Unexpected line during qrexec-policy-graph parsing: $line" ; B_E }
     local src="${BASH_REMATCH[1]}"
-    [[ "$src" == "disp"* ]] && continue #always ignore disposable VM instances
     local target="${BASH_REMATCH[2]}"
     local policy="${BASH_REMATCH[3]}"
+
+    #create group nodes, if necessary
+    local gid=
+    if src="$(rpc_parseNodes "$src")" ; then
+      getGroupId "gid" "$src" "VM Group" && nodes="$nodes"$'\n'"$(createGroupNode "$gid" "$src" 0)"
+      src="$gid"
+    fi
+    if target="$(rpc_parseNodes "$target")" ; then
+      getGroupId "gid" "$target" "VM Group" && nodes="$nodes"$'\n'"$(createGroupNode "$gid" "$target" 0)"
+      target="$gid"
+    fi
+    if policy="$(rpc_parsePolicies "$policy" | sort)" ; then
+      getGroupId "gid" "$policy" "Policy Group" && nodes="$nodes"$'\n'"$(createGroupNode "$gid" "$policy" 1)"
+
+      #special case: we created a dedicated policy node and now need edges from src --> policy --> target
+      #we create the policy --> target edge and leave the rest to the remaining code
+      local sid="$(getMermaidId "$src")"
+      local pid="$(getMermaidId "$gid")"
+      local tid="$(getMermaidId "$target")"
+      links="$links"$'\n'"$pid $thinArrow|$sid|$tid"
+      target="$gid"
+      policy=""
+    fi
 
     local sid="$(getMermaidId "$src")"
     local tid="$(getMermaidId "$target")"
 
-    if [[ "$target" == "@"* ]] && [ ! ${nodeDone["$tid"]+exists} ] ; then
-      nodes="$nodes"$'\n'
-      nodes="$nodes"$'\n'"$tid{{$tid}}"
-      nodes="$nodes"$'\n'"class $tid class_Group;"
-      nodeDone["$tid"]=0
-    fi
-
-    links="$links"$'\n'"$sid $thinArrow|$policy|$tid"
+    [ -n "$policy" ] && links="$links"$'\n'"$sid $thinArrow|$policy|$tid" || links="$links"$'\n'"$sid $thinArrow $tid"
   fi
 done
 
@@ -242,6 +281,92 @@ echo "$nodes"
 echo ""
 echo "%% links %%"
 echo "$links"
+}
+
+#getGroupId [ret] [group] [prefix]
+#Obtain a group ID for the given group. For existing groups the existing ID is returned. For new groups a new group is alloced.
+#[ret]: Name of the return variable to write the group ID to.
+#[group]: Newline-separated list of nodes to obtain the group ID for.
+#[prefix]: String to represent the group.
+#returns: Nothing. Sets a zero exit code, if a new group had to be created and a non-zero exit code for existing groups.
+#@B_E
+#@StateChanging
+function getGroupId {
+local _ret="$1"
+local group="$2"
+local prefix="$3"
+
+if [ ${ID_GROUPS["$group"]+exists} ] ; then
+  eval $_ret="'${ID_GROUPS["$group"]}'"
+  return 2
+else
+  local cnt="${ID_LAST["$prefix"]:-0}"
+  (( cnt++ ))
+  ID_LAST["$prefix"]="$cnt"
+  ID_GROUPS["$group"]="$prefix $cnt"
+  eval $_ret="'$prefix $cnt'"
+  return 0
+fi
+}
+
+#createGroupNode [group node name] [input nodes] [node type]
+#Create a group node, i.e. a node representing multiple others.
+#[group node]: Name of the group node to create.
+#[input nodes]: Newline-separated list of nodes to merge.
+#[node type]: 0=VM (default), 1=policy
+#returns: The mermaid-js string representing the new node group.
+function createGroupNode {
+local groupNode="$1"
+local inputNodes="$2"
+local type="$3"
+
+local nodeFmt='%s(%s)'
+[ $type -ne 0 ] && nodeFmt='%s>%s]' #special shape for policy nodes
+
+local gid="$(getMermaidId "$groupNode")"
+echo ""
+printf "$nodeFmt" "$gid" "$groupNode"
+echo ""
+[ $type -eq 0 ] && echo "class $gid group_nodes" || echo "class $gid group_policies"
+echo "click $gid show_details \"details\""
+echo "<div id=\"details_$gid\">"$'\n'"$inputNodes"$'\n'"</div>"
+}
+
+#rpc_parseNodes [str]
+#Parse the list of nodes from the given string in prune-policy-graph format.
+#returns: Newline-separated list of nodes. Sets a zero exit code, if and only if more than one node was found.
+#@B_E
+function rpc_parseNodes {
+local str="$1"
+
+local IFS=","
+read -ra arr <<< "$str"
+
+local node=
+for node in "${arr[@]}" ; do
+  echo "$node"
+done
+
+[ ${#arr[@]} -gt 1 ]
+}
+
+#rpc_parsePolicies [str]
+#Parse the list of policies from the given string in prune-policy-graph format.
+#returns: Newline-separated list of policies. Sets a zero exit code, if and only if more than one policy was found.
+#@B_E
+function rpc_parsePolicies {
+local str="$1"
+
+local IFS='\'
+read -ra arr <<< "$str"
+local token=
+local re='^"([a-zA-Z\.]+)$'
+local cnt=0
+for token in "${arr[@]}" ; do
+  [[ "$token" =~ $re ]] && echo "${BASH_REMATCH[1]}" && (( cnt++ ))
+done
+
+[ $cnt -gt 1 ]
 }
 
 #vm_moveAndDisplay [src dir] [target dir] [mermaid file] [browser] [force]
@@ -284,7 +409,7 @@ cd "$targetDir"
 }
 
 function main {
-b_deps "qvm-ls" "cat" "qvm-prefs" "qvm-copy-to-vm" "qrexec-policy-graph"
+b_deps "qvm-ls" "cat" "sort" "qvm-prefs" "qvm-copy-to-vm" "qrexec-policy-graph"
 b_dom0_setVMDeps "find"$'\n'"wc"$'\n'"mv"$'\n'"mkdir"
 
 b_args_init 1 "-r" 0 "--orient" 1 "-n" 0 "-R" 0 "-t" 0 "-v" 0 "-D" 0 "-w" 0 "-f" 0 "--browser" 1
@@ -300,7 +425,7 @@ local cmd=
 if b_args_getOption "-r" > /dev/null ; then
   cmd="cat -"
 else
-  b_args_getOption "-R" > /dev/null && cmd="( $QVM_LS && $RPC_LS )" || cmd="$QVM_LS"
+  b_args_getOption "-R" > /dev/null && cmd="$IN_CALL" || cmd="$QVM_LS"
 fi
 
 local mermaid=
