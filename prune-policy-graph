@@ -82,12 +82,26 @@ def main(args=None, app=None):
 
     #TOFIX: attribute order shouldn't matter --> better id_func functions needed
 
-    #remove disp* nodes
+    #fix some details about the qrexec-policy-graph output
     to_remove = []
+    to_rename = {}
+    disp_pattern = re.compile('^disp[0-9]+$')
+    disp_template_pattern = re.compile('^@dispvm:(.*)$')
     for n in G:
-        if re.search("^disp[0-9]+$", str(n)):
+        #remove disp* nodes
+        if disp_pattern.search(str(n)):
             to_remove.append(n)
+        #move @dispvm: to the policies on the edges leading to such a node
+        else:
+            match = disp_template_pattern.match(str(n))
+            if match:
+                for p in G.predecessors(n):
+                    for att in G[p][n].values(): #G[p][n] is a dict of index --> attribute dict
+                        label = att['label']
+                        att['label'] = '"disp:' + label[1:] #take care of the stupid "
+                to_rename[n] = match.group(1)
     G.remove_nodes_from(to_remove)
+    G = nx.relabel_nodes(G, to_rename, copy=False)
 
     #prune: if more than one source shares common targets and attributes, merge them to a group
     G = prune(G, lambda u,v,a: str(v) + str(a))

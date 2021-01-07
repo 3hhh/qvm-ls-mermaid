@@ -360,7 +360,7 @@ local str="$1"
 local IFS='\'
 read -ra arr <<< "$str"
 local token=
-local re='^"([a-zA-Z\.]+)$'
+local re='^"([a-zA-Z\.:_\-]+)$'
 local cnt=0
 for token in "${arr[@]}" ; do
   [[ "$token" =~ $re ]] && echo "${BASH_REMATCH[1]}" && (( cnt++ ))
