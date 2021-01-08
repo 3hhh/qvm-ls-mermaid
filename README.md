@@ -2,12 +2,27 @@
 
 Generate [mermaid-js](https://mermaid-js.github.io/) network and [RPC](https://www.qubes-os.org/doc/rpc-policy/) graphs for your [Qubes OS](https://www.qubes-os.org/) system and display them inside a [Qubes OS](https://www.qubes-os.org/) VM.
 
+See the architecture of an entire Qubes OS system at a glance!
+
 The output is a full html page displayed in your browser. For static images you can convert that with e.g. [mermaid-cli](https://github.com/mermaid-js/mermaid-cli).
 
-## Examples
+## Example
 
-A default Qubes OS installation, filtered to show the network VMs only:  
+A full Qubes OS installation including _all_ configured RPC policies:  
 ![Example](examples/1.png)
+
+This example was generated via `qvm-ls-mermaid -nR`.
+
+### What do I see here?
+
+- The thick arrows represent network connections, the thin arrows RPC policy relations.
+- A blue VM border indicates a template VM, a red border indicates a disposable VM and a neutral border a regular AppVM.
+- VMs are colored according to their security label. VM and Policy Groups have no special color or border.
+- VM Groups represent multiple VMs, Policy Groups multiple RPC policies. These nodes can be clicked to show the contained VMs/policies when the `-D` option was used (not here).
+- Policy Group nodes have a special form to discern them from VMs. If they only represent a single policy, they are removed and the policy name can be found at the edge (e.g. between VM Group 5,4 and 2).
+- "disp:" indicates that the RPC policy is only valid for disposable VMs of the target node (VM Group 4 contains many template VMs).
+- VMs without network or RPC policy relations were removed from the graph thanks to the `-n` option.
+- This is a graph generated from a real-world Qubes OS system with more than 50 VMs, but it easily fits on your 2k+ screen!
 
 ## Features
 

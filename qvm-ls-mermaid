@@ -88,7 +88,7 @@ mermaid-js: https://mermaid-js.github.io/
     minutes.
 
   -n
-    Filter out all VMs without networking from the result.
+    Filter out all nodes without edges from the result.
 
   -t
     Include template information in the output.
@@ -97,8 +97,9 @@ mermaid-js: https://mermaid-js.github.io/
     Include the virtualization mode in the output.
 
   -D
-    Include all qvm-prefs details in the diagram by clicking on
-    a VM node.
+    Add details to nodes that are revealed on click. Regular nodes
+    currently show qvm-prefs output, VM and policy groups show their
+    contained elements.
     This mode may generate syntax that is not compatible with
     standard mermaid-js.
 
@@ -159,8 +160,8 @@ orient="$(getOrientation)" || { B_ERR="Invalid orientation specified." ; B_E }
 echo "graph $orient"
 echo ""
 
-local filterNoNet=1
-b_args_getOption "-n" > /dev/null && filterNoNet=0
+local filterNoEdges=1
+b_args_getOption "-n" > /dev/null && filterNoEdges=0
 
 local includeRpc=1
 b_args_getOption "-R" > /dev/null && includeRpc=0
@@ -178,10 +179,10 @@ b_args_getOption "-w" > /dev/null && thinArrow="---" && thickArrow="==="
 local includeDetails=1
 b_args_getOption "-D" > /dev/null && includeDetails=0
 
-declare -A nodeDone=()
-local nodes=""
-local links=""
-local line name class label netvm providesNetwork template dispTemplate virtMode id details
+declare -A nodes=() #node mermaid ID --> its mermaid-js implementation
+declare -A nodeHasEdge=() #node mermaid ID --> whether it is connected to an edge
+local edges=""
+local line name class label netvm providesNetwork template dispTemplate virtMode id details impl
 local inRpc=1 #whether or not we're currently parsing qrexec-policy-graph output
 while IFS= read -r line ; do
   [ -z "$line" ] && continue
@@ -196,43 +197,36 @@ while IFS= read -r line ; do
 
     IFS='|' read -r name class label netvm providesNetwork template dispTemplate virtMode <<< "$line"
     [[ "$name" == "disp"* ]] && continue #always ignore disposable VM instances
-    [ $filterNoNet -eq 0 ] && [[ "$netvm" == "-" ]] && [ "$providesNetwork" != "True" ] && continue
 
     #define node
     id="$(getMermaidId "$name")"
-    nodes="$nodes"$'\n'
-    nodes="$nodes"$'\n'"$id($name)"
-    nodeDone["$id"]=0
-    nodes="$nodes"$'\n'"class $id class_$class;"
-    nodes="$nodes"$'\n'"class $id label_$label;"
-    [[ "$dispTemplate" == "True" ]] && nodes="$nodes"$'\n'"class $id dispTemplate;"
-    [ $includeVirt -eq 0 ] && nodes="$nodes"$'\n'"class $id virt_mode_$virtMode;"
-    [ $includeTemplate -eq 0 ] && [[ "$template" != "-" ]] && nodes="$nodes"$'\n'"class $id template_$template;"
-    nodes="$nodes"$'\n'"click $id show_details \"details\""
+    impl="$id($name)"
+    impl="$impl"$'\n'"class $id class_$class;"
+    impl="$impl"$'\n'"class $id label_$label;"
+    [[ "$dispTemplate" == "True" ]] && impl="$impl"$'\n'"class $id dispTemplate;"
+    [ $includeVirt -eq 0 ] && impl="$impl"$'\n'"class $id virt_mode_$virtMode;"
+    [ $includeTemplate -eq 0 ] && [[ "$template" != "-" ]] && impl="$impl"$'\n'"class $id template_$template;"
+    impl="$impl"$'\n'"click $id show_details \"details\""
     if [ $includeDetails -eq 0 ] ; then
       if details="$(qvm-prefs "$name")" ; then
-        nodes="$nodes"$'\n'"<div id=\"details_$id\">"$'\n'"$details"$'\n'"</div>"
+        impl="$impl"$'\n'"<div id=\"details_$id\">"$'\n'"$details"$'\n'"</div>"
       fi
     fi
+    nodes["$id"]="$impl"
 
-    #define links
-    [[ "$netvm" != "-" ]] && links="$links"$'\n'"$id $thickArrow $(getMermaidId "$netvm")"
+    #define edges
+    if [[ "$netvm" != "-" ]] ; then
+      local nid="$(getMermaidId "$netvm")"
+      edges="$edges"$'\n'"$id $thickArrow $nid"
+      nodeHasEdge["$id"]=0
+      nodeHasEdge["$nid"]=0
+    fi
   else
     #qrexec-policy-graph output
-    #TOFIX: $filterNoNet has no effect here
     [ $includeRpc -ne 0 ] && continue
 
-    #skip non-edge lines (prune-policy-graph adds node lines)
+    #skip non-edge lines (prune-policy-graph adds node lines that we don't need)
     [[ "$line" != *" -> "* ]] && continue
-
-    #special case: some nodes still need to be created; all others are assumed to exist from qvm-ls
-    #maybe TODO: support the policy graph without qvm-ls input
-    if [[ "$target" == "@"* ]] && [ ! ${nodeDone["$tid"]+exists} ] ; then
-      nodes="$nodes"$'\n'
-      nodes="$nodes"$'\n'"$tid{{$tid}}"
-      nodes="$nodes"$'\n'"class $tid class_Special;"
-      nodeDone["$tid"]=0
-    fi
 
     #line format:
     #"[source]" -> "[target]" [label="[policy]" color=red];
@@ -247,40 +241,60 @@ while IFS= read -r line ; do
     local policy="${BASH_REMATCH[3]}"
 
     #create group nodes, if necessary
-    local gid=
+    local gname=
     if src="$(rpc_parseNodes "$src")" ; then
-      getGroupId "gid" "$src" "VM Group" && nodes="$nodes"$'\n'"$(createGroupNode "$gid" "$src" 0)"
-      src="$gid"
+      getGroupId "gname" "$src" "VM Group" && nodes["$(getMermaidId "$gname")"]="$(createGroupNode "$gname" "$src" 0 "$includeDetails")"
+      src="$gname"
     fi
     if target="$(rpc_parseNodes "$target")" ; then
-      getGroupId "gid" "$target" "VM Group" && nodes="$nodes"$'\n'"$(createGroupNode "$gid" "$target" 0)"
-      target="$gid"
+      getGroupId "gname" "$target" "VM Group" && nodes["$(getMermaidId "$gname")"]="$(createGroupNode "$gname" "$target" 0 "$includeDetails")"
+      target="$gname"
     fi
     if policy="$(rpc_parsePolicies "$policy" | sort)" ; then
-      getGroupId "gid" "$policy" "Policy Group" && nodes="$nodes"$'\n'"$(createGroupNode "$gid" "$policy" 1)"
+      getGroupId "gname" "$policy" "Policy Group" && nodes["$(getMermaidId "$gname")"]="$(createGroupNode "$gname" "$policy" 1 "$includeDetails")"
 
       #special case: we created a dedicated policy node and now need edges from src --> policy --> target
       #we create the policy --> target edge and leave the rest to the remaining code
       local sid="$(getMermaidId "$src")"
-      local pid="$(getMermaidId "$gid")"
+      local pid="$(getMermaidId "$gname")"
       local tid="$(getMermaidId "$target")"
-      links="$links"$'\n'"$pid $thinArrow|$sid|$tid"
-      target="$gid"
+      edges="$edges"$'\n'"$pid $thinArrow|$sid|$tid"
+      nodeHasEdge["$sid"]=0
+      nodeHasEdge["$pid"]=0
+      nodeHasEdge["$tid"]=0
+      target="$gname"
       policy=""
     fi
 
     local sid="$(getMermaidId "$src")"
     local tid="$(getMermaidId "$target")"
 
-    [ -n "$policy" ] && links="$links"$'\n'"$sid $thinArrow|$policy|$tid" || links="$links"$'\n'"$sid $thinArrow $tid"
+    [ -n "$policy" ] && edges="$edges"$'\n'"$sid $thinArrow|$policy|$tid" || edges="$edges"$'\n'"$sid $thinArrow $tid"
+    nodeHasEdge["$sid"]=0
+    nodeHasEdge["$tid"]=0
   fi
 done
 
 echo "%% nodes %%"
-echo "$nodes"
+local node id
+local ids=""
+#first sort to make the result more reproducible for RCS etc., then print
+for id in "${!nodes[@]}" ; do
+  if [ $filterNoEdges -ne 0 ] || [ ${nodeHasEdge["$id"]+exists} ] ; then
+    ids="$ids"$'\n'"$id"
+  fi
+done
+ids="$(sort <<< "$ids")"
+while IFS= read -r id ; do
+    [ -z "$id" ] && continue
+    echo ""
+    echo "${nodes["$id"]}"
+done <<< "$ids"
+
 echo ""
-echo "%% links %%"
-echo "$links"
+echo "%% edges %%"
+edges="$(sort <<< "$edges")"
+echo "$edges"
 }
 
 #getGroupId [ret] [group] [prefix]
@@ -309,27 +323,30 @@ else
 fi
 }
 
-#createGroupNode [group node name] [input nodes] [node type]
+#createGroupNode [group node name] [input nodes] [node type] [include details]
 #Create a group node, i.e. a node representing multiple others.
 #[group node]: Name of the group node to create.
 #[input nodes]: Newline-separated list of nodes to merge.
 #[node type]: 0=VM (default), 1=policy
+#[include details]: Whether or not to include the group details in the output (default: 0).
 #returns: The mermaid-js string representing the new node group.
 function createGroupNode {
 local groupNode="$1"
 local inputNodes="$2"
 local type="$3"
+local includeDetails="${4:-0}"
 
 local nodeFmt='%s(%s)'
 [ $type -ne 0 ] && nodeFmt='%s>%s]' #special shape for policy nodes
 
 local gid="$(getMermaidId "$groupNode")"
-echo ""
 printf "$nodeFmt" "$gid" "$groupNode"
 echo ""
-[ $type -eq 0 ] && echo "class $gid group_nodes" || echo "class $gid group_policies"
+[ $type -eq 0 ] && echo "class $gid group_vms" || echo "class $gid group_policies"
 echo "click $gid show_details \"details\""
-echo "<div id=\"details_$gid\">"$'\n'"$inputNodes"$'\n'"</div>"
+[ $includeDetails -eq 0 ] && echo "<div id=\"details_$gid\">"$'\n'"$inputNodes"$'\n'"</div>"
+
+return 0
 }
 
 #rpc_parseNodes [str]

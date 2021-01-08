@@ -5,8 +5,11 @@
 #
 # Reads the input graph from stdin and writes the output graph to stdout.
 #
+# Since `qrexec-policy-graph` data is based on the _actual_ RPC policy running on your system (and does _not_ separately interpret
+# the RPC configuration at `/etc/qubes-rpc/policy/`, the resulting graph enables you to review whether it works as expected.
+#
 # Copyright (C) 2021  David Hobach  GPLv3
-# 0.3
+# 0.5
 #
 #
 # Relevant doc:
