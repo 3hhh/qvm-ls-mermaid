@@ -22,7 +22,7 @@ This example was generated via `qvm-ls-mermaid -nR`.
 - Policy Group nodes have a special form to discern them from VMs. If they only represent a single policy, they are removed and the policy name can be found at the edge (e.g. between VM Group 5,4 and 2).
 - "disp:" indicates that the RPC policy is only valid for disposable VMs of the target node (VM Group 4 contains many template VMs).
 - VMs without network or RPC policy relations were removed from the graph thanks to the `-n` option.
-- This is a graph generated from a real-world Qubes OS system with more than 50 VMs, but it easily fits on your 2k+ screen!
+- This is a graph generated from a real-world Qubes OS system with more than 50 VMs, but [it easily fits on your 2k+ screen](https://raw.githubusercontent.com/3hhh/qvm-ls-mermaid/master/examples/1.png)!
 
 ## Features
 
