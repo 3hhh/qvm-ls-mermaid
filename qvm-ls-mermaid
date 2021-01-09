@@ -208,8 +208,12 @@ while IFS= read -r line ; do
     [ $includeTemplate -eq 0 ] && [[ "$template" != "-" ]] && impl="$impl"$'\n'"class $id template_$template;"
     impl="$impl"$'\n'"click $id show_details \"details\""
     if [ $includeDetails -eq 0 ] ; then
-      if details="$(qvm-prefs "$name")" ; then
-        impl="$impl"$'\n'"<div id=\"details_$id\">"$'\n'"$details"$'\n'"</div>"
+      if [[ "$name" != "dom0" ]] ; then
+        if details="$(qvm-prefs "$name")" ; then
+          impl="$impl"$'\n'"<div id=\"details_$id\">"$'\n'"$details"$'\n'"</div>"
+        fi
+      else
+        impl="$impl"$'\n'"<div id=\"details_$id\">"$'\n'"$(qubes-prefs)"$'\n'"</div>"
       fi
     fi
     nodes["$id"]="$impl"
@@ -426,7 +430,7 @@ cd "$targetDir"
 }
 
 function main {
-b_deps "qvm-ls" "cat" "sort" "qvm-prefs" "qvm-copy-to-vm" "qrexec-policy-graph"
+b_deps "qvm-ls" "cat" "sort" "qvm-prefs" "qubes-prefs" "qvm-copy-to-vm" "qrexec-policy-graph"
 b_dom0_setVMDeps "find"$'\n'"wc"$'\n'"mv"$'\n'"mkdir"
 
 b_args_init 1 "-r" 0 "--orient" 1 "-n" 0 "-R" 0 "-t" 0 "-v" 0 "-D" 0 "-w" 0 "-f" 0 "--browser" 1
