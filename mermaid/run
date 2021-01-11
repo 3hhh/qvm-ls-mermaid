@@ -5,8 +5,10 @@ set -e -o pipefail
 SCRIPT_DIR="$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")"
 
 TEMPLATE="$SCRIPT_DIR/index-template.html"
+DTEMPLATE="$SCRIPT_DIR/details-template.html"
 MERMAID="$SCRIPT_DIR/qvm-ls-mermaid.js"
 TARGET="$SCRIPT_DIR/index.html"
+DETAILS_DIR="$SCRIPT_DIR/details"
 
 function error {
   local msg="$1"
@@ -14,39 +16,52 @@ function error {
   exit 1
 }
 
+[ -f "$MERMAID" ] || error "No $MERMAID file to read from."
+
 #obtain mermaid code & additional details (-D)
 inDiv=1
 mermaid=""
 details=""
+id=""
+declare -A id2details=()
+re='^<div id="details_(.*)">$'
 while IFS= read -r line ; do
-  [[ "$line" == "<div"* ]] && inDiv=0
+  if [[ "$line" =~ $re ]] ; then
+    inDiv=0
+    id="${BASH_REMATCH[1]}"
+    details="<pre>"
+    continue
+  fi
 
   if [ $inDiv -eq 0 ] ; then
-    details="$details"$'\n'"$line"
-    [[ "$line" == "</div>" ]] && inDiv=1
+    if [[ "$line" == "</div>" ]] ; then
+      inDiv=1
+      id2details["$id"]="$details"$'\n'"</pre>"
+      details=""
+    else
+      details="$details"$'\n'"$line"
+    fi
   else
     mermaid="$mermaid"$'\n'"$line"
   fi
 done < "$MERMAID"
 
+#create necessary details files
+#TODO: updating must be implemented!!!!!
+temp="$(< "$DTEMPLATE")"
+mkdir -p "$DETAILS_DIR"
+for id in "${!id2details[@]}" ; do
+  details="${id2details["$id"]}"
+  data="${temp/<title>TITLE<\/title>/<title>$id<\/title>}"
+  data="${temp/<h1>TITLE<\/h1>/<h1>$id<\/h1>}"
+  data="${data/<div id=\"details\"><\/div>/<div id=\"details\">$'\n'$details$'\n'<\/div>}"
+  echo "$data" > "$DETAILS_DIR/$id.html"
+done
+
 #generate $TARGET mermaid-js code
 #NOTE: dynamic loading via XHR or iframe doesn't work due to cross-origin restrictions
-found=1
-while IFS= read -r line ; do
-  if [[ "$line" == *"<div class=\"mermaid\"></div>" ]] ; then
-    echo "<div class=\"mermaid\">"
-    echo "$mermaid"
-    echo "</div>"
-    echo "<div id=\"details\">"
-    echo "$details"
-    echo "</div>"
-    found=0
-  else
-    echo "$line"
-  fi
-done < "$TEMPLATE" > "$TARGET"
-
-[ $found -eq 0 ] || error "Didn't find the mermaid div inside $TEMPLATE."
+temp="$(< "$TEMPLATE")"
+echo "${temp/<div class=\"mermaid\"><\/div>/<div class=\"mermaid\">$'\n'$mermaid$'\n'<\/div>}" > "$TARGET"
 
 browser="${1:-"xdg-open"}"
 $browser index.html

@@ -206,8 +206,8 @@ while IFS= read -r line ; do
     [[ "$dispTemplate" == "True" ]] && impl="$impl"$'\n'"class $id dispTemplate;"
     [ $includeVirt -eq 0 ] && impl="$impl"$'\n'"class $id virt_mode_$virtMode;"
     [ $includeTemplate -eq 0 ] && [[ "$template" != "-" ]] && impl="$impl"$'\n'"class $id template_$template;"
-    impl="$impl"$'\n'"click $id show_details \"details\""
     if [ $includeDetails -eq 0 ] ; then
+      impl="$impl"$'\n'"click $id \"./details/$id.html\" _blank"
       if [[ "$name" != "dom0" ]] ; then
         if details="$(qvm-prefs "$name")" ; then
           impl="$impl"$'\n'"<div id=\"details_$id\">"$'\n'"$details"$'\n'"</div>"
@@ -347,8 +347,10 @@ local gid="$(getMermaidId "$groupNode")"
 printf "$nodeFmt" "$gid" "$groupNode"
 echo ""
 [ $type -eq 0 ] && echo "class $gid group_vms" || echo "class $gid group_policies"
-echo "click $gid show_details \"details\""
-[ $includeDetails -eq 0 ] && echo "<div id=\"details_$gid\">"$'\n'"$inputNodes"$'\n'"</div>"
+if [ $includeDetails -eq 0 ] ; then
+  echo "click $gid \"./details/$gid.html\" _blank"
+  echo "<div id=\"details_$gid\">"$'\n'"$inputNodes"$'\n'"</div>"
+fi
 
 return 0
 }
