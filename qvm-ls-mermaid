@@ -24,6 +24,7 @@ source blib
 b_checkVersion 1 3 || { >&2 echo "This script depends on blib (https://github.com/3hhh/blib) version 1.3 or higher. Please install a supported version." ; exit 1 ; }
 eval "$B_SCRIPT"
 b_import "args"
+b_import "str"
 b_import "os/qubes4/dom0"
 
 #distinguish the B_E exit code from the "normal" error
@@ -67,8 +68,9 @@ mermaid-js: https://mermaid-js.github.io/
 [out dir]:
   Full path to the directory inside [out vm] where to store the
   chart. If this directory already contains existing files, only
-  $MERMAID_OUT is written. Otherwise the directory is filled
-  with files that are necessary to view the chart inside a browser.
+  $MERMAID_OUT is written and related details (-D) are updated.
+  Otherwise the directory is filled with files that are necessary
+  to view the chart inside a browser.
   Default: $OUT_DEFAULT
 
 [options]:
@@ -97,17 +99,18 @@ mermaid-js: https://mermaid-js.github.io/
     Include the virtualization mode in the output.
 
   -D
-    Add details to nodes that are revealed on click. Regular nodes
-    currently show qvm-prefs output, VM and policy groups show their
-    contained elements.
-    This mode may generate syntax that is not compatible with
-    standard mermaid-js.
+    Add detail pages to nodes that are opened on click. Regular nodes
+    currently link to qvm-prefs output; VM and policy groups link to
+    their contained elements.
+    Detail pages can be customized with e.g. notes or other content.
+    Further runs of this script will only update the detail sections.
 
   -w
     Use arrows without direction.
 
   -f
     Force re-writing the [out dir] and ignore existing files.
+    Detail pages are not necessarily overwritten.
 
   --browser [browser]
     Use the given browser to display the chart (default: xdg-open).
@@ -210,11 +213,14 @@ while IFS= read -r line ; do
       impl="$impl"$'\n'"click $id \"./details/$id.html\" _blank"
       if [[ "$name" != "dom0" ]] ; then
         if details="$(qvm-prefs "$name")" ; then
-          impl="$impl"$'\n'"<div id=\"details_$id\">"$'\n'"$details"$'\n'"</div>"
+          details="<div id=\"details_$id\">"$'\n'"$details"$'\n'"</div>"
         fi
       else
-        impl="$impl"$'\n'"<div id=\"details_$id\">"$'\n'"$(qubes-prefs)"$'\n'"</div>"
+        details="<div id=\"details_$id\">"$'\n'"$(qubes-prefs)"$'\n'"</div>"
       fi
+
+      details="$(b_str_prefixLines "$details" "%% ")"
+      impl="$impl"$'\n'"$details"
     fi
     nodes["$id"]="$impl"
 
@@ -349,7 +355,9 @@ echo ""
 [ $type -eq 0 ] && echo "class $gid group_vms" || echo "class $gid group_policies"
 if [ $includeDetails -eq 0 ] ; then
   echo "click $gid \"./details/$gid.html\" _blank"
-  echo "<div id=\"details_$gid\">"$'\n'"$inputNodes"$'\n'"</div>"
+  echo "%% <div id=\"details_$gid\">"
+  b_str_prefixLines "$inputNodes" "%% "
+  echo "%% </div>"
 fi
 
 return 0

@@ -28,12 +28,15 @@ This example was generated via `qvm-ls-mermaid -nR`.
 
 - VMs are displayed as nodes in a directed graph, connected according to their network and [RPC](https://www.qubes-os.org/doc/rpc-policy/) relations
 - automatic node placement
-- text output (useful for version control)
 - usage of web standards:
   - arbitrary customization
   - arbitrary zoom
 - input filtering via `grep`, `sed`, ...
 - clickable nodes
+- custom content (notes?) can be added to nodes
+- RCS friendly:
+  - text output
+  - subsequent updates keep custom content
 
 ## Installation
 

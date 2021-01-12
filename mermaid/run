@@ -16,6 +16,51 @@ function error {
   exit 1
 }
 
+function warn {
+  local msg="$1"
+  >&2 echo "WARNING: $msg"
+}
+
+#updateDetails [id] [details] [template]
+function updateDetails {
+local id="$1"
+local details="$2"
+local temp="$3"
+local ofile="$DETAILS_DIR/$id.html"
+local out=""
+
+if [ -f "$ofile" ] ; then
+  #update existing
+  local re='^[ ]*<div id="details">$'
+  local line=
+  local inDiv=1
+  local found=1
+  while IFS= read -r line ; do
+    if [[ "$line" =~ $re ]] ; then
+      inDiv=0
+      found=0
+      out="$out"$'\n''<div id="details">'$'\n'"$details"$'\n'"</div>"
+    else
+      if [ $inDiv -eq 0 ] ; then
+        [[ "$line" == *"</div>" ]] && inDiv=1
+        continue
+      else
+        out="$out"$'\n'"$line"
+      fi
+    fi
+  done < "$ofile"
+  out="${out:1}"
+  [ $found -eq 0 ] || warn "No details section could be found for $ofile. Skipping..."
+else
+  #create from scratch
+  out="${temp/<title>TITLE<\/title>/<title>$id<\/title>}"
+  out="${out/<h1>TITLE<\/h1>/<h1>$id<\/h1>}"
+  out="${out/<div id=\"details\"><\/div>/<div id=\"details\">$'\n'$details$'\n'<\/div>}"
+fi
+
+echo "$out" > "$ofile"
+}
+
 [ -f "$MERMAID" ] || error "No $MERMAID file to read from."
 
 #obtain mermaid code & additional details (-D)
@@ -24,7 +69,7 @@ mermaid=""
 details=""
 id=""
 declare -A id2details=()
-re='^<div id="details_(.*)">$'
+re='^%% <div id="details_(.*)">$'
 while IFS= read -r line ; do
   if [[ "$line" =~ $re ]] ; then
     inDiv=0
@@ -34,12 +79,12 @@ while IFS= read -r line ; do
   fi
 
   if [ $inDiv -eq 0 ] ; then
-    if [[ "$line" == "</div>" ]] ; then
+    if [[ "$line" == "%% </div>" ]] ; then
       inDiv=1
       id2details["$id"]="$details"$'\n'"</pre>"
       details=""
     else
-      details="$details"$'\n'"$line"
+      details="$details"$'\n'"${line:3}"
     fi
   else
     mermaid="$mermaid"$'\n'"$line"
@@ -47,15 +92,10 @@ while IFS= read -r line ; do
 done < "$MERMAID"
 
 #create necessary details files
-#TODO: updating must be implemented!!!!!
 temp="$(< "$DTEMPLATE")"
 mkdir -p "$DETAILS_DIR"
 for id in "${!id2details[@]}" ; do
-  details="${id2details["$id"]}"
-  data="${temp/<title>TITLE<\/title>/<title>$id<\/title>}"
-  data="${temp/<h1>TITLE<\/h1>/<h1>$id<\/h1>}"
-  data="${data/<div id=\"details\"><\/div>/<div id=\"details\">$'\n'$details$'\n'<\/div>}"
-  echo "$data" > "$DETAILS_DIR/$id.html"
+  updateDetails "$id" "${id2details["$id"]}" "$temp"
 done
 
 #generate $TARGET mermaid-js code
