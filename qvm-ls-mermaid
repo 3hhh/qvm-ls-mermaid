@@ -100,8 +100,8 @@ mermaid-js: https://mermaid-js.github.io/
 
   -D
     Add detail pages to nodes that are opened on click. Regular nodes
-    currently link to qvm-prefs output; VM and policy groups link to
-    their contained elements.
+    currently link to their preferences and firewall rules; VM and
+    policy groups link to their contained elements.
     Detail pages can be customized with e.g. notes or other content.
     Further runs of this script will only update the detail sections.
 
@@ -185,7 +185,7 @@ b_args_getOption "-D" > /dev/null && includeDetails=0
 declare -A nodes=() #node mermaid ID --> its mermaid-js implementation
 declare -A nodeHasEdge=() #node mermaid ID --> whether it is connected to an edge
 local edges=""
-local line name class label netvm providesNetwork template dispTemplate virtMode id details impl
+local line name class label netvm providesNetwork template dispTemplate virtMode id details impl fw
 local inRpc=1 #whether or not we're currently parsing qrexec-policy-graph output
 while IFS= read -r line ; do
   [ -z "$line" ] && continue
@@ -213,6 +213,8 @@ while IFS= read -r line ; do
       impl="$impl"$'\n'"click $id \"./details/$id.html\" _blank"
       if [[ "$name" != "dom0" ]] ; then
         if details="$(qvm-prefs "$name")" ; then
+          details="<h3>Preferences</h3>"$'\n'"<pre>"$'\n'"$details"$'\n'"</pre>"
+          fw="$(qvm-firewall --raw "$name")" && details="$details"$'\n'$'\n'"<h3>Firewall</h3>"$'\n'"<pre>"$'\n'"$fw"$'\n'"</pre>"
           details="<div id=\"details_$id\">"$'\n'"$details"$'\n'"</div>"
         fi
       else
@@ -440,7 +442,7 @@ cd "$targetDir"
 }
 
 function main {
-b_deps "qvm-ls" "cat" "sort" "qvm-prefs" "qubes-prefs" "qvm-copy-to-vm" "qrexec-policy-graph"
+b_deps "qvm-ls" "cat" "sort" "qvm-prefs" "qvm-firewall" "qubes-prefs" "qvm-copy-to-vm" "qrexec-policy-graph"
 b_dom0_setVMDeps "find"$'\n'"wc"$'\n'"mv"$'\n'"mkdir"
 
 b_args_init 1 "-r" 0 "--orient" 1 "-n" 0 "-R" 0 "-t" 0 "-v" 0 "-D" 0 "-w" 0 "-f" 0 "--browser" 1

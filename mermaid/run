@@ -74,17 +74,17 @@ while IFS= read -r line ; do
   if [[ "$line" =~ $re ]] ; then
     inDiv=0
     id="${BASH_REMATCH[1]}"
-    details="<pre>"
+    details=""
     continue
   fi
 
   if [ $inDiv -eq 0 ] ; then
     if [[ "$line" == "%% </div>" ]] ; then
       inDiv=1
-      id2details["$id"]="$details"$'\n'"</pre>"
+      id2details["$id"]="$details"
       details=""
     else
-      details="$details"$'\n'"${line:3}"
+      [ -z "$details" ] && details="${line:3}" || details="$details"$'\n'"${line:3}"
     fi
   else
     mermaid="$mermaid"$'\n'"$line"
