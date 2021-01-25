@@ -374,7 +374,9 @@ echo ""
 if [ $includeDetails -eq 0 ] ; then
   echo "click $gid \"./details/$gid.html\" _blank"
   echo "%% <div id=\"details_$gid\">"
+  echo "%% <pre>"
   b_str_prefixLines "$inputNodes" "%% "
+  echo "%% </pre>"
   echo "%% </div>"
 fi
 
