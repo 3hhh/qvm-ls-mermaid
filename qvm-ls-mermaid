@@ -95,6 +95,9 @@ mermaid-js: https://mermaid-js.github.io/
   -t
     Include template information in the output.
 
+  -T
+    Include template relationships as dotted edges in the output.
+
   -v
     Include the virtualization mode in the output.
 
@@ -172,12 +175,16 @@ b_args_getOption "-R" > /dev/null && includeRpc=0
 local includeTemplate=1
 b_args_getOption "-t" > /dev/null && includeTemplate=0
 
+local includeTemplateRels=1
+b_args_getOption "-T" > /dev/null && includeTemplateRels=0
+
 local includeVirt=1
 b_args_getOption "-v" > /dev/null && includeVirt=0
 
 local thinArrow="-->"
 local thickArrow="==>"
-b_args_getOption "-w" > /dev/null && thinArrow="---" && thickArrow="==="
+local dottedArrow="-.->"
+b_args_getOption "-w" > /dev/null && thinArrow="---" && thickArrow="===" && dottedArrow="-.-"
 
 local includeDetails=1
 b_args_getOption "-D" > /dev/null && includeDetails=0
@@ -208,7 +215,16 @@ while IFS= read -r line ; do
     impl="$impl"$'\n'"class $id label_$label;"
     [[ "$dispTemplate" == "True" ]] && impl="$impl"$'\n'"class $id dispTemplate;"
     [ $includeVirt -eq 0 ] && impl="$impl"$'\n'"class $id virt_mode_$virtMode;"
-    [ $includeTemplate -eq 0 ] && [[ "$template" != "-" ]] && impl="$impl"$'\n'"class $id template_$template;"
+    if [ "$template" != "-" ] ; then
+      [ $includeTemplate -eq 0 ] && impl="$impl"$'\n'"class $id template_$template;"
+      if [ $includeTemplateRels -eq 0 ] ; then
+        local tid="$(getMermaidId "$template")"
+        edges="$edges"$'\n'"$tid $dottedArrow $id"
+        nodeHasEdge["$id"]=0
+        nodeHasEdge["$tid"]=0
+      fi
+    fi
+
     if [ $includeDetails -eq 0 ] ; then
       impl="$impl"$'\n'"click $id \"./details/$id.html\" _blank"
       if [[ "$name" != "dom0" ]] ; then
@@ -445,7 +461,7 @@ function main {
 b_deps "qvm-ls" "cat" "sort" "qvm-prefs" "qvm-firewall" "qubes-prefs" "qvm-copy-to-vm" "qrexec-policy-graph"
 b_dom0_setVMDeps "find"$'\n'"wc"$'\n'"mv"$'\n'"mkdir"
 
-b_args_init 1 "-r" 0 "--orient" 1 "-n" 0 "-R" 0 "-t" 0 "-v" 0 "-D" 0 "-w" 0 "-f" 0 "--browser" 1
+b_args_init 1 "-r" 0 "--orient" 1 "-n" 0 "-R" 0 "-t" 0 "-T" 0 "-v" 0 "-D" 0 "-w" 0 "-f" 0 "--browser" 1
 b_args_parse "$@"
 if [ $(b_args_getCount) -gt 2 ] || [[ "$(b_args_get 0)" == "help" ]] ; then
   usage
