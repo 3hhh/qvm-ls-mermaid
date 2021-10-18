@@ -41,7 +41,7 @@ This example was generated via `qvm-ls-mermaid -nR`.
 ## Installation
 
 1. Download [blib](https://github.com/3hhh/blib), copy it to dom0 and install it according to [its instructions](https://github.com/3hhh/blib#installation).
-2. In dom0, install the [networkx library](https://networkx.org/) via `sudo qubes-dom0-update python3-networkx-core python3-networkx-drawing`. If you skip this step, the RPC graph (`-R` option) cannot be generated.
+2. In dom0, install the [networkx library](https://networkx.org/) via `sudo qubes-dom0-update python3-networkx`. If you skip this step, the RPC graph (`-R` option) cannot be generated.
 3. Download this repository with `git clone https://github.com/3hhh/qidle.git` or your browser and copy it to dom0.
 4. Move the repository to a directory of your liking.
 5. Symlink the `qvm-ls-mermaid` binary into your dom0 `PATH` for convenience, e.g. to `/usr/bin/`.
