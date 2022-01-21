@@ -509,7 +509,7 @@ b_info "Moving and displaying the graph inside the $outVM VM..."
 local vmUser=
 vmUser="$(qvm-prefs "$outVM" "default_user")" || { B_ERR="Failed to identify the default_user for the $outVM VM." ; B_E }
 local srcDir="/home/$vmUser/QubesIncoming/dom0/${VM_DIR##*/}"
-b_dom0_execFuncIn "$outVM" "$vmUser" "vm_moveAndDisplay" - - "$srcDir" "$outDir" "$MERMAID_OUT" "$browser" "$force" > /dev/null || { B_ERR="Failed to display the graph inside the $outVM VM." ; B_E }
+b_silence b_dom0_execFuncIn "$outVM" "$vmUser" "vm_moveAndDisplay" - - "$srcDir" "$outDir" "$MERMAID_OUT" "$browser" "$force" | { B_ERR="Failed to display the graph inside the $outVM VM." ; B_E }
 
 echo ""
 b_info "All done."
