@@ -29,6 +29,7 @@ b_import "os/qubes4/dom0"
 
 #distinguish the B_E exit code from the "normal" error
 B_RC=6
+B_DOM0_QVM_RUN_PARAMS=("--no-gui")
 
 #path to the prune-policy-graph script
 PRUNE_SCRIPT="$B_SCRIPT_DIR/prune-policy-graph"
