@@ -88,7 +88,7 @@ mermaid-js: https://mermaid-js.github.io/
   -R
     Include RPC policy data from qrexec-policy-graph.
     Generating a policy graph suitable for viewing may take several
-    minutes.
+    minutes and use gigabytes of memory.
 
   -n
     Filter out all nodes without edges from the result.

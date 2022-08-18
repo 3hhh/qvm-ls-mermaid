@@ -76,12 +76,13 @@ def prune(G, id_func):
         group_u = merge_nodes(id2pre[id]['u'])
         group_v = merge_nodes(id2pre[id]['v'])
         atts = merge_attributes(id2pre[id]['a'])
-        O.add_edge(group_u, group_v, attr_dict=atts)
+        O.add_edge(group_u, group_v, **atts)
 
     return O
 
 def main(args=None, app=None):
     G = read_dot(sys.stdin)
+    print('Policy graph read. Fixing some details...', file=sys.stderr)
 
     #TOFIX: attribute order shouldn't matter --> better id_func functions needed
 
@@ -107,15 +108,21 @@ def main(args=None, app=None):
     G = nx.relabel_nodes(G, to_rename, copy=False)
 
     #prune: if more than one source shares common targets and attributes, merge them to a group
+    print('Pruning sources...', file=sys.stderr)
     G = prune(G, lambda u,v,a: str(v) + str(a))
 
     #prune: if more than one target shares common sources and attributes, merge them to a group
+    print('Pruning targets...', file=sys.stderr)
     G = prune(G, lambda u,v,a: str(u) + str(a))
 
     #prune: if more than one attribute shares common sources and targets, merge them to a group
+    print('Pruning attributes...', file=sys.stderr)
     G = prune(G, lambda u,v,a: str(u) + str(v))
 
+    print('Writing output...', file=sys.stderr)
     write_dot(G, sys.stdout)
+
+    print('All done.', file=sys.stderr)
 
 if __name__ == '__main__':
     sys.exit(main())
