@@ -70,7 +70,7 @@ By default a network graph is generated. Use the `-R` option to also include [RP
 
 ## Copyright
 
-© 2021 David Hobach
+© 2022 David Hobach
 GPLv3
 
 See `LICENSE` for details.
