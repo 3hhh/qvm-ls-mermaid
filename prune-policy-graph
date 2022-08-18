@@ -17,7 +17,7 @@
 # - https://networkx.org/documentation/networkx-1.11/
 
 import networkx as nx
-from networkx.drawing.nx_pydot import read_dot, write_dot
+from networkx.drawing.nx_agraph import read_dot, write_dot
 import sys
 import re
 
