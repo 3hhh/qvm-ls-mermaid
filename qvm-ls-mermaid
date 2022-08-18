@@ -163,7 +163,7 @@ echo "$name"
 function getMermaidOut {
 #print header
 local orient=
-orient="$(getOrientation)" || { B_ERR="Invalid orientation specified." ; B_E }
+orient="$(getOrientation)" || { B_ERR="Invalid orientation specified." ; B_E ; }
 echo "graph $orient"
 echo ""
 
@@ -264,7 +264,7 @@ while IFS= read -r line ; do
     #[policy]: name of a single policy _or_ list of escaped comma-separated policies, e.g. \"qubes.SyncAppMenus\"', '\"qubes.ReceiveUpdates\"', ...
     local re='^[ ]*"?([^ "]+)"? -> "?([^ "]+)"? .*label="\[([^]]+)\]".*$'
 
-    [[ "$line" =~ $re ]] || { B_ERR="Unexpected line during qrexec-policy-graph parsing: $line" ; B_E }
+    [[ "$line" =~ $re ]] || { B_ERR="Unexpected line during qrexec-policy-graph parsing: $line" ; B_E ; }
     local src="${BASH_REMATCH[1]}"
     local target="${BASH_REMATCH[2]}"
     local policy="${BASH_REMATCH[3]}"
@@ -496,21 +496,21 @@ b_args_getOption "-f" > /dev/null && force=0
 
 b_info "Generated the mermaid output. Ensuring that the ${outVM:-"disposable"} target VM is running..."
 if [ -z "$outVM" ] ; then
-  outVM="$(b_dom0_startDispVM)" || { B_ERR="Failed to start a disposable VM." ; B_E }
+  outVM="$(b_dom0_startDispVM)" || { B_ERR="Failed to start a disposable VM." ; B_E ; }
 else
   b_dom0_ensureRunning "$outVM"
 fi
 
 b_info "Transferring the data to the $outVM VM..."
 local ofile="$VM_DIR/$MERMAID_OUT"
-echo "$mermaid" > "$ofile" || { B_ERR="Failed to write to $ofile." ; B_E }
-qvm-copy-to-vm "$outVM" "$VM_DIR" || { B_ERR="Failed to copy the data." ; B_E }
+echo "$mermaid" > "$ofile" || { B_ERR="Failed to write to $ofile." ; B_E ; }
+qvm-copy-to-vm "$outVM" "$VM_DIR" || { B_ERR="Failed to copy the data." ; B_E ; }
 
 b_info "Moving and displaying the graph inside the $outVM VM..."
 local vmUser=
-vmUser="$(qvm-prefs "$outVM" "default_user")" || { B_ERR="Failed to identify the default_user for the $outVM VM." ; B_E }
+vmUser="$(qvm-prefs "$outVM" "default_user")" || { B_ERR="Failed to identify the default_user for the $outVM VM." ; B_E ; }
 local srcDir="/home/$vmUser/QubesIncoming/dom0/${VM_DIR##*/}"
-b_silence b_dom0_execFuncIn "$outVM" "$vmUser" "vm_moveAndDisplay" - - "$srcDir" "$outDir" "$MERMAID_OUT" "$browser" "$force" | { B_ERR="Failed to display the graph inside the $outVM VM." ; B_E }
+b_silence b_dom0_execFuncIn "$outVM" "$vmUser" "vm_moveAndDisplay" - - "$srcDir" "$outDir" "$MERMAID_OUT" "$browser" "$force" || { B_ERR="Failed to display the graph inside the $outVM VM." ; B_E ; }
 
 echo ""
 b_info "All done."
