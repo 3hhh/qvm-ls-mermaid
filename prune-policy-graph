@@ -17,7 +17,8 @@
 # - https://networkx.org/documentation/networkx-1.11/
 
 import networkx as nx
-from networkx.drawing.nx_agraph import read_dot, write_dot
+from networkx.drawing.nx_agraph import read_dot #agraph is ~1000x faster and doesn't use GBs of memory
+from networkx.drawing.nx_pydot import write_dot #agraph inserts lot of newlines
 import sys
 import re
 
