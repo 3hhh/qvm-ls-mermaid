@@ -82,8 +82,9 @@ def prune(G, id_func):
     return O
 
 def main(args=None, app=None):
+    print('Reading the RPC policy graph... (this may take some time)', file=sys.stderr)
     G = read_dot(sys.stdin)
-    print('Policy graph read. Fixing some details...', file=sys.stderr)
+    print('Fixing some details...', file=sys.stderr)
 
     #TOFIX: attribute order shouldn't matter --> better id_func functions needed
 
