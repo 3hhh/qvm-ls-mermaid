@@ -16,11 +16,12 @@
 # - https://github.com/QubesOS/qubes-core-qrexec/blob/master/qrexec/tools/qrexec_policy_graph.py
 # - https://networkx.org/documentation/networkx-1.11/
 
+import sys
+import re
+
 import networkx as nx
 from networkx.drawing.nx_agraph import read_dot #agraph is ~1000x faster and doesn't use GBs of memory
 from networkx.drawing.nx_pydot import write_dot #agraph inserts lot of newlines
-import sys
-import re
 
 #merge_attributes(atts)
 #Merge the given list of attributes to a single attribute dict.
@@ -59,34 +60,34 @@ def prune(G, id_func):
     id2pre = {} #ID --> { u: u, v: v, a: a }
 
     for u,v,a in G.edges(data=True):
-        id = id_func(u, v, a)
+        _id = id_func(u, v, a)
 
         #init, if necessary
-        if not id2pre.get(id):
-            id2pre[id] = {}
-        id2pre[id]['u'] = id2pre[id].get('u',[])
-        id2pre[id]['v'] = id2pre[id].get('v',[])
-        id2pre[id]['a'] = id2pre[id].get('a',[])
+        if not id2pre.get(_id):
+            id2pre[_id] = {}
+        id2pre[_id]['u'] = id2pre[_id].get('u',[])
+        id2pre[_id]['v'] = id2pre[_id].get('v',[])
+        id2pre[_id]['a'] = id2pre[_id].get('a',[])
 
         #append
-        id2pre[id]['u'].append(u)
-        id2pre[id]['v'].append(v)
-        id2pre[id]['a'].append(a)
+        id2pre[_id]['u'].append(u)
+        id2pre[_id]['v'].append(v)
+        id2pre[_id]['a'].append(a)
 
-    for id in id2pre:
-        group_u = merge_nodes(id2pre[id]['u'])
-        group_v = merge_nodes(id2pre[id]['v'])
-        atts = merge_attributes(id2pre[id]['a'])
+    for _id in id2pre:
+        group_u = merge_nodes(id2pre[_id]['u'])
+        group_v = merge_nodes(id2pre[_id]['v'])
+        atts = merge_attributes(id2pre[_id]['a'])
         O.add_edge(group_u, group_v, **atts)
 
     return O
 
-def main(args=None, app=None):
+def main():
     print('Reading the RPC policy graph... (this may take some time)', file=sys.stderr)
     G = read_dot(sys.stdin)
     print('Fixing some details...', file=sys.stderr)
 
-    #TOFIX: attribute order shouldn't matter --> better id_func functions needed
+    #FIXME: attribute order shouldn't matter --> better id_func functions needed
 
     #fix some details about the qrexec-policy-graph output
     to_remove = []
