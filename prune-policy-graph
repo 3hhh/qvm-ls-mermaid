@@ -9,7 +9,7 @@
 # the RPC configuration at `/etc/qubes-rpc/policy/`, the resulting graph enables you to review whether it works as expected.
 #
 # Copyright (C) 2022  David Hobach  GPLv3
-# 0.6
+# 0.7
 #
 #
 # Relevant doc:
