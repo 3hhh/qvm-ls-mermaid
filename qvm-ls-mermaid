@@ -136,11 +136,13 @@ else
 fi
 }
 
-#getMermaidId [name]
+#getMermaidId [name] [type]
 #Generate a mermaid ID from the given VM name.
+#[type]: 0=VM (default), 1=policy
 #returns: An ID that should be accepted by mermaid-js.
 function getMermaidId {
 local name="$1"
+local type="${2:-0}"
 
 #mermaid-js doesn't like the word "default" in any ID --> replace it
 name="${name//default/Default}"
@@ -151,7 +153,8 @@ name="${name//@/}"
 #mermaid-js doesn't like spaces --> replace them with underscores
 name="${name// /_}"
 
-echo "$name"
+#different node types must get different IDs
+[ $type -eq 0 ] && echo "vm_${name}" || echo "policy_${name}"
 }
 
 #getMermaidOut
@@ -265,36 +268,58 @@ while IFS= read -r line ; do
     [[ "$line" =~ $re ]] || { B_ERR="Unexpected line during qrexec-policy-graph parsing: $line" ; B_E ; }
     local src="${BASH_REMATCH[1]}"
     local target="${BASH_REMATCH[2]}"
+    local target_type=0 #0=VM, 1=policy
     local policy="${BASH_REMATCH[3]}"
 
-    #create group nodes, if necessary
     local gname=
     if src="$(rpc_parseNodes "$src")" ; then
-      getGroupId "gname" "$src" "VM Group" && nodes["$(getMermaidId "$gname")"]="$(createGroupNode "$gname" "$src" 0 "$includeDetails")"
-      src="$gname"
+      #create group nodes, if necessary
+      if [[ "$src" == *$'\n'* ]] ; then
+        getGroupId "gname" "$src" "VM Group" && nodes["$(getMermaidId "$gname")"]="$(createGroupNode "$gname" "$src" 0 "$includeDetails")"
+        src="$gname"
+      fi
+    else
+      B_ERR="Failed to parse the source: $src"
+      B_E
     fi
-    if target="$(rpc_parseNodes "$target")" ; then
-      getGroupId "gname" "$target" "VM Group" && nodes["$(getMermaidId "$gname")"]="$(createGroupNode "$gname" "$target" 0 "$includeDetails")"
-      target="$gname"
-    fi
-    if policy="$(rpc_parsePolicies "$policy" | sort)" ; then
-      getGroupId "gname" "$policy" "Policy Group" && nodes["$(getMermaidId "$gname")"]="$(createGroupNode "$gname" "$policy" 1 "$includeDetails")"
 
-      #special case: we created a dedicated policy node and now need edges from src --> policy --> target
-      #we create the policy --> target edge and leave the rest to the remaining code
-      local sid="$(getMermaidId "$src")"
-      local pid="$(getMermaidId "$gname")"
-      local tid="$(getMermaidId "$target")"
-      edges="$edges"$'\n'"$pid $thinArrow|$sid|$tid"
-      nodeHasEdge["$sid"]=0
-      nodeHasEdge["$pid"]=0
-      nodeHasEdge["$tid"]=0
-      target="$gname"
-      policy=""
+    if target="$(rpc_parseNodes "$target")" ; then
+      #create group nodes, if necessary
+      if [[ "$target" == *$'\n'* ]] ; then
+        getGroupId "gname" "$target" "VM Group" && nodes["$(getMermaidId "$gname")"]="$(createGroupNode "$gname" "$target" 0 "$includeDetails")"
+        target="$gname"
+      fi
+    else
+      B_ERR="Failed to parse the target: $target"
+      B_E
+    fi
+
+    if policy="$(rpc_parsePolicies "$policy")" ; then
+      #create group nodes, if necessary
+      if [[ "$policy" == *$'\n'* ]] ; then
+        policy="$(sort <<< "$policy")"
+        getGroupId "gname" "$policy" "Policy Group" && nodes["$(getMermaidId "$gname" 1)"]="$(createGroupNode "$gname" "$policy" 1 "$includeDetails")"
+
+        #special case: we created a dedicated policy node and now need edges from src --> policy --> target
+        #we create the policy --> target edge and leave the rest to the remaining code
+        local sid="$(getMermaidId "$src")"
+        local pid="$(getMermaidId "$gname" 1)"
+        local tid="$(getMermaidId "$target")"
+        edges="$edges"$'\n'"$pid $thinArrow|$gname|$tid"
+        nodeHasEdge["$sid"]=0
+        nodeHasEdge["$pid"]=0
+        nodeHasEdge["$tid"]=0
+        target="$gname"
+        target_type=1
+        policy=""
+      fi
+    else
+      B_ERR="Failed to parse the policy: $policy"
+      B_E
     fi
 
     local sid="$(getMermaidId "$src")"
-    local tid="$(getMermaidId "$target")"
+    local tid="$(getMermaidId "$target" "$target_type")"
 
     [ -n "$policy" ] && edges="$edges"$'\n'"$sid $thinArrow|$policy|$tid" || edges="$edges"$'\n'"$sid $thinArrow $tid"
     nodeHasEdge["$sid"]=0
@@ -366,7 +391,7 @@ local includeDetails="${4:-0}"
 local nodeFmt='%s(%s)'
 [ $type -ne 0 ] && nodeFmt='%s>%s]' #special shape for policy nodes
 
-local gid="$(getMermaidId "$groupNode")"
+local gid="$(getMermaidId "$groupNode" "$type")"
 printf "$nodeFmt" "$gid" "$groupNode"
 echo ""
 [ $type -eq 0 ] && echo "class $gid group_vms" || echo "class $gid group_policies"
@@ -384,11 +409,16 @@ return 0
 
 #rpc_parseNodes [str]
 #Parse the list of nodes from the given string in prune-policy-graph format.
-#returns: Newline-separated list of nodes. Sets a zero exit code, if and only if more than one node was found.
+#returns: Newline-separated list of nodes. Sets a zero exit code, if and only if at least one node was found.
 #@B_E
 function rpc_parseNodes {
 local str="$1"
+[ -z "$str" ] && return 1
 
+#single element
+[[ "$str" != *","* ]] && echo "$str" && return 0
+
+#multiple elements
 local IFS=","
 read -ra arr <<< "$str"
 
@@ -397,26 +427,34 @@ for node in "${arr[@]}" ; do
   echo "$node"
 done
 
-[ ${#arr[@]} -gt 1 ]
+[ ${#arr[@]} -ge 1 ]
 }
 
 #rpc_parsePolicies [str]
 #Parse the list of policies from the given string in prune-policy-graph format.
-#returns: Newline-separated list of policies. Sets a zero exit code, if and only if more than one policy was found.
+#returns: Newline-separated list of policies. Sets a zero exit code, if and only if at least one policy was found.
 #@B_E
 function rpc_parsePolicies {
 local str="$1"
+[ -z "$str" ] && return 1
+local re='^[^a-zA-Z\.:_-]*([a-zA-Z\.:_-]+).*$'
 
-local IFS='\'
+#single element
+if [[ "$str" != *","* ]] ; then
+  [[ "$str" =~ $re ]] && echo "${BASH_REMATCH[1]}" || return 1
+  return 0
+fi
+
+#multiple elements
+local IFS=','
 read -ra arr <<< "$str"
 local token=
-local re='^"([a-zA-Z\.:_\-]+)$'
 local cnt=0
 for token in "${arr[@]}" ; do
   [[ "$token" =~ $re ]] && echo "${BASH_REMATCH[1]}" && (( cnt++ ))
 done
 
-[ $cnt -gt 1 ]
+[ $cnt -ge 1 ]
 }
 
 #vm_moveAndDisplay [src dir] [target dir] [mermaid file] [browser] [force]

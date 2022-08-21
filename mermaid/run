@@ -53,8 +53,9 @@ if [ -f "$ofile" ] ; then
   [ $found -eq 0 ] || warn "No details section could be found for $ofile. Skipping..."
 else
   #create from scratch
-  out="${temp/<title>TITLE<\/title>/<title>$id<\/title>}"
-  out="${out/<h1>TITLE<\/h1>/<h1>$id<\/h1>}"
+  local name="${id#*_}" #remove vm_ / policy_
+  out="${temp/<title>TITLE<\/title>/<title>$name<\/title>}"
+  out="${out/<h1>TITLE<\/h1>/<h1>$name<\/h1>}"
   out="${out/<div id=\"details\"><\/div>/<div id=\"details\">$'\n'$details$'\n'<\/div>}"
 fi
 
