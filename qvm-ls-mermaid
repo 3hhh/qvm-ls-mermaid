@@ -25,7 +25,6 @@ b_checkVersion 1 3 || { >&2 echo "This script depends on blib (https://github.co
 eval "$B_SCRIPT"
 b_import "args"
 b_import "str"
-b_import "os/qubes4/dom0"
 
 #distinguish the B_E exit code from the "normal" error
 B_RC=6
@@ -116,6 +115,10 @@ mermaid-js: https://mermaid-js.github.io/
 
   --browser [browser]
     Use the given browser to display the chart (default: xdg-open).
+
+  --vm
+    $B_SCRIPT_NAME is run inside a VM instead of dom0. Implies -r.
+    Excludes -D. Will only print the output.
 "
 exit 1
 }
@@ -190,6 +193,7 @@ b_args_getOption "-w" > /dev/null && thinArrow="---" && thickArrow="===" && dott
 
 local includeDetails=1
 b_args_getOption "-D" > /dev/null && includeDetails=0
+b_args_getOption "--vm" > /dev/null && includeDetails=1
 
 declare -A nodes=() #node mermaid ID --> its mermaid-js implementation
 declare -A nodeHasEdge=() #node mermaid ID --> whether it is connected to an edge
@@ -497,20 +501,33 @@ cd "$targetDir"
 }
 
 function main {
-b_deps "qvm-ls" "cat" "sort" "qvm-prefs" "qvm-firewall" "qubes-prefs" "qvm-copy-to-vm" "qrexec-policy-graph"
-b_dom0_setVMDeps "find"$'\n'"wc"$'\n'"mv"$'\n'"mkdir"
-
-b_args_init 1 "-r" 0 "--orient" 1 "-n" 0 "-R" 0 "-t" 0 "-T" 0 "-v" 0 "-D" 0 "-w" 0 "-f" 0 "--browser" 1
+b_args_init 1 "-r" 0 "--vm" 0 "--orient" 1 "-n" 0 "-R" 0 "-t" 0 "-T" 0 "-v" 0 "-D" 0 "-w" 0 "-f" 0 "--browser" 1
 b_args_parse "$@"
 if [ $(b_args_getCount) -gt 2 ] || [[ "$(b_args_get 0)" == "help" ]] ; then
   usage
 fi
 
+b_deps "cat" "sort"
+
 local outVM="$(b_args_get 0)"
 local outDir="$(b_args_get 1 "$OUT_DEFAULT")"
 
-local cmd=
+local readStdin=1
+if b_args_getOption "--vm" > /dev/null ; then
+  readStdin=0
+  outVM="dom0"
+else
+  b_import "os/qubes4/dom0"
+  b_deps "qvm-ls" "qvm-prefs" "qvm-firewall" "qubes-prefs" "qvm-copy-to-vm" "qrexec-policy-graph"
+  b_dom0_setVMDeps "find"$'\n'"wc"$'\n'"mv"$'\n'"mkdir"
+fi
+
 if b_args_getOption "-r" > /dev/null ; then
+  readStdin=0
+fi
+
+local cmd=
+if [ $readStdin -eq 0 ] ; then
   cmd="cat -"
 else
   b_args_getOption "-R" > /dev/null && cmd="$IN_CALL" || cmd="$QVM_LS"
