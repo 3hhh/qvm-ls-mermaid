@@ -105,4 +105,4 @@ temp="$(< "$TEMPLATE")"
 echo "${temp/<div class=\"mermaid\"><\/div>/<div class=\"mermaid\">$'\n'$mermaid$'\n'<\/div>}" > "$TARGET"
 
 browser="${1:-"xdg-open"}"
-$browser index.html
+$browser "$TARGET"
