@@ -156,6 +156,9 @@ name="${name//@/}"
 #mermaid-js doesn't like spaces --> replace them with underscores
 name="${name// /_}"
 
+#mermaid-js doesn't like double dashes --> replace them with single dashes
+name="${name//--/-}"
+
 #different node types must get different IDs
 [ $type -eq 0 ] && echo "vm_${name}" || echo "policy_${name}"
 }
