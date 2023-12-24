@@ -66,7 +66,7 @@ By default a network graph is generated. Use the `-R` option to also include [RP
 
 ### Usage inside a VM
 
-This program may run inside a VM. The input data however must come from `dom0`.
+This program may run inside a regular (non-admin) VM. The input data however must come from `dom0`.
 
 The following steps are needed:
 
@@ -75,6 +75,8 @@ The following steps are needed:
 3. Go to the `qvm-ls-mermaid` installation directory using a terminal emulator of your choice.
 4. Execute `( cat ~/QubesIncoming/dom0/qvmls.txt ; ./prune-policy-graph < ~/QubesIncoming/dom0/qpol.txt ) | ./qvm-ls-mermaid --vm > mermaid/qvm-ls-mermaid.js` (feel free to add additional options).
 5. Use the output file at `mermaid/qvm-ls-mermaid.js` in your favourite [mermaid-js](https://mermaid-js.github.io/) viewer or just display it inside your browser via `cd mermaid ; ./run`.
+
+Alternatively it is possible to setup a Qubes OS [admin VM](https://www.qubes-os.org/doc/admin-api/) with limited access rights to retrieve the required data. A community guide describing this approach can be found [here](https://forum.qubes-os.org/t/visualize-qubes-configuration-without-trust-a-use-case-for-the-qubes-admin-api/23072).
 
 ## Uninstall
 
