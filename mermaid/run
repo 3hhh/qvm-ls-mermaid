@@ -35,7 +35,7 @@ if [ -f "$ofile" ] ; then
   local line=
   local inDiv=1
   local found=1
-  while IFS= read -r line ; do
+  while IFS= read -r line || [ -n "$line" ] ; do
     if [[ "$line" =~ $re ]] ; then
       inDiv=0
       found=0
@@ -71,7 +71,7 @@ details=""
 id=""
 declare -A id2details=()
 re='^%% <div id="details_(.*)">$'
-while IFS= read -r line ; do
+while IFS= read -r line || [ -n "$line" ] ; do
   if [[ "$line" =~ $re ]] ; then
     inDiv=0
     id="${BASH_REMATCH[1]}"

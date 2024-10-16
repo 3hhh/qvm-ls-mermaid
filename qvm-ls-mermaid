@@ -21,7 +21,7 @@
 
 #init blib
 source blib
-b_checkVersion 1 3 || { >&2 echo "This script depends on blib (https://github.com/3hhh/blib) version 1.3 or higher. Please install a supported version." ; exit 1 ; }
+b_checkVersion 1 6 || { >&2 echo "This script depends on blib (https://github.com/3hhh/blib) version 1.6 or higher. Please install a supported version." ; exit 1 ; }
 eval "$B_SCRIPT"
 b_import "args"
 b_import "str"
@@ -203,7 +203,7 @@ declare -A nodeHasEdge=() #node mermaid ID --> whether it is connected to an edg
 local edges=""
 local line name class label netvm providesNetwork template dispTemplate virtMode id details impl fw
 local inRpc=1 #whether or not we're currently parsing qrexec-policy-graph output
-while IFS= read -r line ; do
+while b_readLine line ; do
   [ -z "$line" ] && continue
 
   #detect the start and end of qrexec-policy-graph output
@@ -344,7 +344,7 @@ for id in "${!nodes[@]}" ; do
   fi
 done
 ids="$(sort <<< "$ids")"
-while IFS= read -r id ; do
+while b_readLine id ; do
     [ -z "$id" ] && continue
     echo ""
     echo "${nodes["$id"]}"
