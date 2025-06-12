@@ -444,7 +444,7 @@ done
 function rpc_parsePolicies {
 local str="$1"
 [ -z "$str" ] && return 1
-local re='^[^a-zA-Z\.:_-]*([a-zA-Z\.:_-]+).*$'
+local re='^[^a-zA-Z\.:_-~]*([a-zA-Z\.:_-~]+).*$'
 
 #single element
 if [[ "$str" != *","* ]] ; then

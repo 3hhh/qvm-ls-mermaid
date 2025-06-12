@@ -105,7 +105,7 @@ def main():
                 for p in G.predecessors(n):
                     for att in G[p][n].values(): #G[p][n] is a dict of index --> attribute dict
                         label = att['label']
-                        att['label'] = 'disp:' + label
+                        att['label'] = 'disp~' + label
                 to_rename[n] = match.group(1)
     G.remove_nodes_from(to_remove)
     G = nx.relabel_nodes(G, to_rename, copy=False)
